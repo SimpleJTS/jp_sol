@@ -212,24 +212,25 @@ async function getTokenInfo(tokenMint) {
   }
 }
 
-// Jupiter Ultra API - 创建订单 (获取报价和交易)
+// Jupiter Ultra API - 获取订单 (GET 请求)
 async function createOrder(inputMint, outputMint, amount, taker) {
-  console.log('[SQT] 创建订单...', { inputMint, outputMint, amount });
+  console.log('[SQT] 获取订单...', { inputMint, outputMint, amount });
 
-  const res = await fetch(`${JUPITER_ULTRA_API}/order`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      inputMint,
-      outputMint,
-      amount: amount.toString(),
-      taker
-    })
+  const params = new URLSearchParams({
+    inputMint,
+    outputMint,
+    amount: amount.toString(),
+    taker
   });
+
+  const url = `${JUPITER_ULTRA_API}/order?${params}`;
+  console.log('[SQT] 请求 URL:', url);
+
+  const res = await fetch(url);
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`订单创建失败: ${res.status} - ${text}`);
+    throw new Error(`订单获取失败: ${res.status} - ${text}`);
   }
 
   const data = await res.json();
