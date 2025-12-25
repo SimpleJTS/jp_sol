@@ -112,100 +112,73 @@ async function rpcRequest(endpoint, method, params = []) {
   }
 }
 
-// 备用 RPC 列表
-const FALLBACK_RPCS = [
-  'https://api.mainnet-beta.solana.com',
-  'https://rpc.ankr.com/solana',
-  'https://solana-mainnet.g.alchemy.com/v2/demo'
-];
+// Jupiter Ultra API - 获取所有余额
+const JUPITER_BALANCE_API = 'https://lite-api.jup.ag/ultra/v1/balances';
 
-// 获取 SOL 余额 (带备用方案)
-async function getSolBalance(publicKey, rpcEndpoint) {
-  // 方案1: 尝试用户指定的 RPC
-  try {
-    const result = await rpcRequest(rpcEndpoint, 'getBalance', [publicKey]);
-    return result.value / LAMPORTS_PER_SOL;
-  } catch (err) {
-    console.log('[SQT] 主RPC失败，尝试备用方案...');
+// 缓存余额数据
+let balanceCache = {
+  data: null,
+  timestamp: 0,
+  address: ''
+};
+const CACHE_TTL = 5000; // 5秒缓存
+
+// 从 Jupiter 获取所有余额
+async function getBalancesFromJupiter(publicKey) {
+  // 检查缓存
+  const now = Date.now();
+  if (balanceCache.address === publicKey &&
+      balanceCache.data &&
+      (now - balanceCache.timestamp) < CACHE_TTL) {
+    console.log('[SQT] 使用缓存余额');
+    return balanceCache.data;
   }
 
-  // 方案2: 尝试 Solscan API
-  try {
-    const res = await fetch(`https://api.solscan.io/account?address=${publicKey}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.data?.lamports) {
-        console.log('[SQT] Solscan API 成功');
-        return data.data.lamports / LAMPORTS_PER_SOL;
-      }
-    }
-  } catch (e) {
-    console.log('[SQT] Solscan API 失败');
+  console.log('[SQT] Jupiter Ultra API 获取余额...');
+  const res = await fetch(`${JUPITER_BALANCE_API}/${publicKey}`);
+
+  if (!res.ok) {
+    throw new Error(`Jupiter API 错误: ${res.status}`);
   }
 
-  // 方案3: 尝试备用 RPC
-  for (const rpc of FALLBACK_RPCS) {
-    try {
-      console.log(`[SQT] 尝试备用 RPC: ${rpc}`);
-      const result = await rpcRequest(rpc, 'getBalance', [publicKey]);
-      return result.value / LAMPORTS_PER_SOL;
-    } catch (e) {
-      continue;
-    }
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error);
   }
 
-  throw new Error('所有 RPC 均失败，请检查网络');
+  // 更新缓存
+  balanceCache = {
+    data: data,
+    timestamp: now,
+    address: publicKey
+  };
+
+  console.log('[SQT] Jupiter 余额:', data);
+  return data;
 }
 
-// 获取 Token 余额 (带备用方案)
-async function getTokenBalance(publicKey, tokenMint, rpcEndpoint) {
-  // 方案1: 尝试用户指定的 RPC
-  try {
-    const result = await rpcRequest(rpcEndpoint, 'getTokenAccountsByOwner', [
-      publicKey,
-      { mint: tokenMint },
-      { encoding: 'jsonParsed' }
-    ]);
-    if (result.value?.length > 0) {
-      return parseFloat(result.value[0].account.data.parsed.info.tokenAmount.uiAmount) || 0;
-    }
-    return 0;
-  } catch (err) {
-    console.log('[SQT] 主RPC获取Token失败，尝试备用...');
+// 获取 SOL 余额
+async function getSolBalance(publicKey) {
+  const balances = await getBalancesFromJupiter(publicKey);
+
+  // SOL 的 key 是 "SOL" 或 wrapped SOL mint
+  if (balances.SOL) {
+    return balances.SOL.uiAmount || 0;
+  }
+  if (balances[SOL_MINT]) {
+    return balances[SOL_MINT].uiAmount || 0;
   }
 
-  // 方案2: 尝试 Solscan Token API
-  try {
-    const res = await fetch(`https://api.solscan.io/account/tokens?address=${publicKey}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.data) {
-        const token = data.data.find(t => t.tokenAddress === tokenMint);
-        if (token) {
-          console.log('[SQT] Solscan Token API 成功');
-          return parseFloat(token.tokenAmount?.uiAmount) || 0;
-        }
-      }
-    }
-  } catch (e) {
-    console.log('[SQT] Solscan Token API 失败');
-  }
+  return 0;
+}
 
-  // 方案3: 尝试备用 RPC
-  for (const rpc of FALLBACK_RPCS) {
-    try {
-      const result = await rpcRequest(rpc, 'getTokenAccountsByOwner', [
-        publicKey,
-        { mint: tokenMint },
-        { encoding: 'jsonParsed' }
-      ]);
-      if (result.value?.length > 0) {
-        return parseFloat(result.value[0].account.data.parsed.info.tokenAmount.uiAmount) || 0;
-      }
-      return 0;
-    } catch (e) {
-      continue;
-    }
+// 获取 Token 余额
+async function getTokenBalance(publicKey, tokenMint) {
+  const balances = await getBalancesFromJupiter(publicKey);
+
+  if (balances[tokenMint]) {
+    return balances[tokenMint].uiAmount || 0;
   }
 
   return 0;
@@ -355,7 +328,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
     inputMint = tokenCA;
     outputMint = SOL_MINT;
 
-    const tokenBalance = await getTokenBalance(keypair.publicKeyBase58, tokenCA, rpcEndpoint);
+    const tokenBalance = await getTokenBalance(keypair.publicKeyBase58, tokenCA);
     if (tokenBalance === 0) throw new Error('没有持仓');
 
     const tokenInfo = await getTokenInfo(tokenCA);
@@ -398,8 +371,7 @@ async function handleMessage(message) {
   switch (message.type) {
     case 'GET_WALLET_INFO': {
       const keypair = getKeypair(message.privateKey);
-      const rpc = message.rpcEndpoint || 'https://api.mainnet-beta.solana.com';
-      const balance = await getSolBalance(keypair.publicKeyBase58, rpc);
+      const balance = await getSolBalance(keypair.publicKeyBase58);
       return { success: true, address: keypair.publicKeyBase58, balance };
     }
 
@@ -408,12 +380,10 @@ async function handleMessage(message) {
       if (!settings.privateKey) throw new Error('钱包未配置');
 
       const keypair = getKeypair(settings.privateKey);
-      const rpc = settings.rpcEndpoint || 'https://api.mainnet-beta.solana.com';
-
-      const solBalance = await getSolBalance(keypair.publicKeyBase58, rpc);
+      const solBalance = await getSolBalance(keypair.publicKeyBase58);
       let tokenBalance = 0;
       if (message.tokenCA) {
-        tokenBalance = await getTokenBalance(keypair.publicKeyBase58, message.tokenCA, rpc);
+        tokenBalance = await getTokenBalance(keypair.publicKeyBase58, message.tokenCA);
       }
       return { success: true, solBalance, tokenBalance };
     }
@@ -425,8 +395,7 @@ async function handleMessage(message) {
       let balance = 0;
       if (settings.privateKey) {
         const keypair = getKeypair(settings.privateKey);
-        const rpc = settings.rpcEndpoint || 'https://api.mainnet-beta.solana.com';
-        balance = await getTokenBalance(keypair.publicKeyBase58, message.tokenCA, rpc);
+        balance = await getTokenBalance(keypair.publicKeyBase58, message.tokenCA);
       }
       return { success: true, tokenInfo, balance };
     }
