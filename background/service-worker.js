@@ -112,14 +112,54 @@ async function rpcRequest(endpoint, method, params = []) {
   }
 }
 
-// 获取 SOL 余额
+// 备用 RPC 列表
+const FALLBACK_RPCS = [
+  'https://api.mainnet-beta.solana.com',
+  'https://rpc.ankr.com/solana',
+  'https://solana-mainnet.g.alchemy.com/v2/demo'
+];
+
+// 获取 SOL 余额 (带备用方案)
 async function getSolBalance(publicKey, rpcEndpoint) {
-  const result = await rpcRequest(rpcEndpoint, 'getBalance', [publicKey]);
-  return result.value / LAMPORTS_PER_SOL;
+  // 方案1: 尝试用户指定的 RPC
+  try {
+    const result = await rpcRequest(rpcEndpoint, 'getBalance', [publicKey]);
+    return result.value / LAMPORTS_PER_SOL;
+  } catch (err) {
+    console.log('[SQT] 主RPC失败，尝试备用方案...');
+  }
+
+  // 方案2: 尝试 Solscan API
+  try {
+    const res = await fetch(`https://api.solscan.io/account?address=${publicKey}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.data?.lamports) {
+        console.log('[SQT] Solscan API 成功');
+        return data.data.lamports / LAMPORTS_PER_SOL;
+      }
+    }
+  } catch (e) {
+    console.log('[SQT] Solscan API 失败');
+  }
+
+  // 方案3: 尝试备用 RPC
+  for (const rpc of FALLBACK_RPCS) {
+    try {
+      console.log(`[SQT] 尝试备用 RPC: ${rpc}`);
+      const result = await rpcRequest(rpc, 'getBalance', [publicKey]);
+      return result.value / LAMPORTS_PER_SOL;
+    } catch (e) {
+      continue;
+    }
+  }
+
+  throw new Error('所有 RPC 均失败，请检查网络');
 }
 
-// 获取 Token 余额
+// 获取 Token 余额 (带备用方案)
 async function getTokenBalance(publicKey, tokenMint, rpcEndpoint) {
+  // 方案1: 尝试用户指定的 RPC
   try {
     const result = await rpcRequest(rpcEndpoint, 'getTokenAccountsByOwner', [
       publicKey,
@@ -131,9 +171,44 @@ async function getTokenBalance(publicKey, tokenMint, rpcEndpoint) {
     }
     return 0;
   } catch (err) {
-    console.error('获取Token余额失败:', err);
-    return 0;
+    console.log('[SQT] 主RPC获取Token失败，尝试备用...');
   }
+
+  // 方案2: 尝试 Solscan Token API
+  try {
+    const res = await fetch(`https://api.solscan.io/account/tokens?address=${publicKey}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.data) {
+        const token = data.data.find(t => t.tokenAddress === tokenMint);
+        if (token) {
+          console.log('[SQT] Solscan Token API 成功');
+          return parseFloat(token.tokenAmount?.uiAmount) || 0;
+        }
+      }
+    }
+  } catch (e) {
+    console.log('[SQT] Solscan Token API 失败');
+  }
+
+  // 方案3: 尝试备用 RPC
+  for (const rpc of FALLBACK_RPCS) {
+    try {
+      const result = await rpcRequest(rpc, 'getTokenAccountsByOwner', [
+        publicKey,
+        { mint: tokenMint },
+        { encoding: 'jsonParsed' }
+      ]);
+      if (result.value?.length > 0) {
+        return parseFloat(result.value[0].account.data.parsed.info.tokenAmount.uiAmount) || 0;
+      }
+      return 0;
+    } catch (e) {
+      continue;
+    }
+  }
+
+  return 0;
 }
 
 // 获取代币信息
