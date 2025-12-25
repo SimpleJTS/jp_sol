@@ -1,5 +1,10 @@
 // Solana Quick Trade - Background Service Worker
-importScripts('../lib/nacl.js');
+try {
+  importScripts('lib/nacl.js');
+  console.log('[SQT] nacl.js 加载成功');
+} catch (e) {
+  console.error('[SQT] 加载 nacl.js 失败:', e);
+}
 
 // Jupiter API
 const JUPITER_API = 'https://quote-api.jup.ag/v6';
@@ -82,14 +87,29 @@ async function getSettings() {
 
 // RPC 请求
 async function rpcRequest(endpoint, method, params = []) {
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.result;
+  console.log(`[SQT] RPC: ${method} -> ${endpoint}`);
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    console.log(`[SQT] RPC 响应:`, data);
+
+    if (data.error) {
+      throw new Error(data.error.message || JSON.stringify(data.error));
+    }
+    return data.result;
+  } catch (err) {
+    console.error(`[SQT] RPC 错误 (${method}):`, err);
+    throw err;
+  }
 }
 
 // 获取 SOL 余额
@@ -286,9 +306,16 @@ async function executeTrade(tradeType, tokenCA, amount) {
 
 // 消息处理
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[SQT] 收到消息:', message.type);
   handleMessage(message)
-    .then(sendResponse)
-    .catch(err => sendResponse({ success: false, error: err.message }));
+    .then(response => {
+      console.log('[SQT] 响应:', response);
+      sendResponse(response);
+    })
+    .catch(err => {
+      console.error('[SQT] 处理错误:', err);
+      sendResponse({ success: false, error: err.message });
+    });
   return true;
 });
 
