@@ -13,7 +13,12 @@
     "https://tokens.jup.ag/*",
     "https://api.mainnet-beta.solana.com/*",
     "https://*.helius-rpc.com/*",
-    "https://*.solana.com/*"
+    "https://*.solana.com/*",
+    "https://*.rpcpool.com/*",
+    "https://*.quicknode.com/*",
+    "https://*.alchemy.com/*",
+    "https://*.triton.one/*",
+    "https://*.genesysgo.net/*"
   ],
   "action": {
     "default_popup": "popup/popup.html",
