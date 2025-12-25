@@ -6,8 +6,8 @@ try {
   console.error('[SQT] 加载 nacl.js 失败:', e);
 }
 
-// Jupiter API
-const JUPITER_API = 'https://quote-api.jup.ag/v6';
+// Jupiter Ultra API
+const JUPITER_ULTRA_API = 'https://lite-api.jup.ag/ultra/v1';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const LAMPORTS_PER_SOL = 1000000000;
 
@@ -212,51 +212,42 @@ async function getTokenInfo(tokenMint) {
   }
 }
 
-// 获取最近区块哈希
-async function getRecentBlockhash(rpcEndpoint) {
-  const result = await rpcRequest(rpcEndpoint, 'getLatestBlockhash', [{ commitment: 'finalized' }]);
-  return result.value.blockhash;
-}
+// Jupiter Ultra API - 创建订单 (获取报价和交易)
+async function createOrder(inputMint, outputMint, amount, taker) {
+  console.log('[SQT] 创建订单...', { inputMint, outputMint, amount });
 
-// Jupiter 报价
-async function getQuote(inputMint, outputMint, amount, slippageBps) {
-  const params = new URLSearchParams({
-    inputMint,
-    outputMint,
-    amount: amount.toString(),
-    slippageBps: slippageBps.toString()
-  });
-  const res = await fetch(`${JUPITER_API}/quote?${params}`);
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data;
-}
-
-// 获取交换交易
-async function getSwapTransaction(quote, userPublicKey, priorityFee) {
-  const res = await fetch(`${JUPITER_API}/swap`, {
+  const res = await fetch(`${JUPITER_ULTRA_API}/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      quoteResponse: quote,
-      userPublicKey,
-      wrapAndUnwrapSol: true,
-      prioritizationFeeLamports: Math.floor(priorityFee * LAMPORTS_PER_SOL),
-      dynamicComputeUnitLimit: true
+      inputMint,
+      outputMint,
+      amount: amount.toString(),
+      taker
     })
   });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`订单创建失败: ${res.status} - ${text}`);
+  }
+
   const data = await res.json();
-  if (data.error) throw new Error(data.error);
+  console.log('[SQT] 订单响应:', data);
+
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
   return data;
 }
 
-// 签名并发送交易
-async function signAndSendTransaction(swapTransaction, secretKey, rpcEndpoint) {
+// 签名交易
+function signTransaction(transactionBase64, secretKey) {
   // 解码 base64 交易
-  const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
+  const txBytes = Uint8Array.from(atob(transactionBase64), c => c.charCodeAt(0));
 
   // 解析 VersionedTransaction
-  // 第一个字节是签名数量
   const numSignatures = txBytes[0];
   const signatureSize = 64;
   const signaturesEnd = 1 + numSignatures * signatureSize;
@@ -267,56 +258,49 @@ async function signAndSendTransaction(swapTransaction, secretKey, rpcEndpoint) {
   // 使用 Ed25519 签名消息
   const signature = self.nacl.sign(message, secretKey);
 
-  // 将签名插入到交易中 (第一个签名位置)
+  // 将签名插入到交易中
   const signedTx = new Uint8Array(txBytes.length);
   signedTx.set(txBytes);
-  signedTx.set(signature, 1); // 签名从偏移量1开始
+  signedTx.set(signature, 1);
 
-  // 发送交易
-  const signedTxBase64 = btoa(String.fromCharCode(...signedTx));
-
-  const result = await rpcRequest(rpcEndpoint, 'sendTransaction', [
-    signedTxBase64,
-    {
-      encoding: 'base64',
-      skipPreflight: false,
-      preflightCommitment: 'confirmed',
-      maxRetries: 3
-    }
-  ]);
-
-  return result;
+  // 返回 base64 编码的签名交易
+  return btoa(String.fromCharCode(...signedTx));
 }
 
-// 确认交易
-async function confirmTransaction(signature, rpcEndpoint, timeout = 60000) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    try {
-      const result = await rpcRequest(rpcEndpoint, 'getSignatureStatuses', [[signature]]);
-      if (result.value[0]) {
-        if (result.value[0].err) {
-          throw new Error('交易失败: ' + JSON.stringify(result.value[0].err));
-        }
-        if (['confirmed', 'finalized'].includes(result.value[0].confirmationStatus)) {
-          return true;
-        }
-      }
-    } catch (e) {}
-    await new Promise(r => setTimeout(r, 1500));
+// Jupiter Ultra API - 执行交易
+async function executeOrder(signedTransaction, requestId) {
+  console.log('[SQT] 执行交易...', requestId);
+
+  const res = await fetch(`${JUPITER_ULTRA_API}/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      signedTransaction,
+      requestId
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`交易执行失败: ${res.status} - ${text}`);
   }
-  throw new Error('交易确认超时');
+
+  const data = await res.json();
+  console.log('[SQT] 执行结果:', data);
+
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  return data;
 }
 
-// 执行交易
+// 执行交易 (完整流程)
 async function executeTrade(tradeType, tokenCA, amount) {
   const settings = await getSettings();
   if (!settings.privateKey) throw new Error('钱包未配置');
 
   const keypair = getKeypair(settings.privateKey);
-  const rpcEndpoint = settings.rpcEndpoint || 'https://api.mainnet-beta.solana.com';
-  const slippageBps = Math.floor((settings.slippage || 1) * 100);
-  const priorityFee = settings.priorityFee || 0.0005;
 
   let inputMint, outputMint, tradeAmount;
 
@@ -337,19 +321,28 @@ async function executeTrade(tradeType, tokenCA, amount) {
     tradeAmount = Math.floor(sellAmount * Math.pow(10, decimals));
   }
 
-  console.log('获取报价...');
-  const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps);
+  // 1. 创建订单 (获取报价和未签名交易)
+  console.log('[SQT] 创建订单...');
+  const order = await createOrder(inputMint, outputMint, tradeAmount, keypair.publicKeyBase58);
 
-  console.log('获取交易数据...');
-  const swapData = await getSwapTransaction(quote, keypair.publicKeyBase58, priorityFee);
+  if (!order.transaction) {
+    throw new Error('未获取到交易数据');
+  }
 
-  console.log('签名并发送交易...');
-  const signature = await signAndSendTransaction(swapData.swapTransaction, keypair.secretKey, rpcEndpoint);
+  // 2. 签名交易
+  console.log('[SQT] 签名交易...');
+  const signedTx = signTransaction(order.transaction, keypair.secretKey);
 
-  console.log('等待确认:', signature);
-  await confirmTransaction(signature, rpcEndpoint);
+  // 3. 执行交易
+  console.log('[SQT] 执行交易...');
+  const result = await executeOrder(signedTx, order.requestId);
 
-  return signature;
+  if (result.status === 'Failed') {
+    throw new Error(result.error || '交易失败');
+  }
+
+  console.log('[SQT] 交易成功:', result.signature);
+  return result.signature;
 }
 
 // 消息处理
