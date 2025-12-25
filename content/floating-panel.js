@@ -71,6 +71,10 @@
                 <button class="sqt-trade-btn buy" data-amount="${amount}">${amount}</button>
               `).join('')}
             </div>
+            <div class="sqt-custom-buy">
+              <input type="number" id="sqt-custom-amount" placeholder="自定义" min="0.01" step="0.01">
+              <button class="sqt-trade-btn buy" id="sqt-custom-buy-btn">买入</button>
+            </div>
           </div>
 
           <!-- 卖出区域 -->
@@ -223,6 +227,26 @@
       });
     });
 
+    // 自定义买入
+    const customBuyBtn = panel.querySelector('#sqt-custom-buy-btn');
+    const customAmountInput = panel.querySelector('#sqt-custom-amount');
+
+    customBuyBtn.addEventListener('click', async () => {
+      const amount = parseFloat(customAmountInput.value);
+      if (!amount || amount <= 0) {
+        showStatus('请输入有效金额', 'error');
+        return;
+      }
+      await executeTrade('buy', amount, customBuyBtn);
+    });
+
+    // 回车键触发买入
+    customAmountInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        customBuyBtn.click();
+      }
+    });
+
     // 卖出按钮
     panel.querySelectorAll('#sqt-sell-btns .sqt-trade-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -276,7 +300,7 @@
   }
 
   // 执行交易
-  async function executeTrade(type, value) {
+  async function executeTrade(type, value, customBtn = null) {
     if (!panelState.currentCA) {
       showStatus('请先输入代币合约地址', 'error');
       return;
@@ -288,10 +312,13 @@
     }
 
     // 找到对应按钮并显示loading
-    const btnSelector = type === 'buy' ?
-      `#sqt-buy-btns .sqt-trade-btn[data-amount="${value}"]` :
-      `#sqt-sell-btns .sqt-trade-btn[data-percent="${value}"]`;
-    const btn = document.querySelector(btnSelector);
+    let btn = customBtn;
+    if (!btn) {
+      const btnSelector = type === 'buy' ?
+        `#sqt-buy-btns .sqt-trade-btn[data-amount="${value}"]` :
+        `#sqt-sell-btns .sqt-trade-btn[data-percent="${value}"]`;
+      btn = document.querySelector(btnSelector);
+    }
 
     if (btn) {
       btn.classList.add('loading');

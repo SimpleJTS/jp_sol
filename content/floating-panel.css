@@ -220,6 +220,39 @@
   gap: 8px;
 }
 
+/* 自定义买入 */
+.sqt-custom-buy {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.sqt-custom-buy input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.sqt-custom-buy input:focus {
+  border-color: #00d4aa;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sqt-custom-buy input::placeholder {
+  color: #666;
+}
+
+.sqt-custom-buy .sqt-trade-btn {
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
 .sqt-trade-btn {
   padding: 12px 8px;
   border: none;
