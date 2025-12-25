@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solana Quick Trade 设置</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>⚡ Solana Quick Trade</h1>
+      <p class="subtitle">快捷交易设置</p>
+    </header>
+
+    <div class="section">
+      <label>钱包私钥</label>
+      <div class="input-group">
+        <input type="password" id="privateKey" placeholder="输入私钥 (Base58格式)">
+        <button id="toggleKey" class="icon-btn">👁️</button>
+      </div>
+      <small class="warning">⚠️ 私钥仅存储在本地，建议使用小额交易钱包</small>
+    </div>
+
+    <div class="section">
+      <label>RPC 节点</label>
+      <select id="rpcEndpoint">
+        <option value="https://api.mainnet-beta.solana.com">Solana 官方 (免费)</option>
+        <option value="https://mainnet.helius-rpc.com/?api-key=">Helius (需API Key)</option>
+        <option value="custom">自定义</option>
+      </select>
+      <input type="text" id="customRpc" placeholder="自定义 RPC URL" style="display:none; margin-top:8px;">
+    </div>
+
+    <div class="section">
+      <label>默认滑点 (%)</label>
+      <div class="slippage-options">
+        <button class="slip-btn" data-value="0.5">0.5%</button>
+        <button class="slip-btn active" data-value="1">1%</button>
+        <button class="slip-btn" data-value="2">2%</button>
+        <button class="slip-btn" data-value="3">3%</button>
+        <input type="number" id="customSlippage" placeholder="自定义" min="0.1" max="50" step="0.1">
+      </div>
+    </div>
+
+    <div class="section">
+      <label>优先费用 (SOL)</label>
+      <select id="priorityFee">
+        <option value="0.0001">低 (0.0001 SOL)</option>
+        <option value="0.0005" selected>中 (0.0005 SOL)</option>
+        <option value="0.001">高 (0.001 SOL)</option>
+        <option value="0.005">极高 (0.005 SOL)</option>
+      </select>
+    </div>
+
+    <div class="section wallet-info" id="walletInfo" style="display:none;">
+      <label>钱包状态</label>
+      <div class="info-row">
+        <span>地址:</span>
+        <span id="walletAddress" class="address">-</span>
+      </div>
+      <div class="info-row">
+        <span>余额:</span>
+        <span id="walletBalance">- SOL</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="saveBtn" class="primary-btn">💾 保存设置</button>
+      <button id="testBtn" class="secondary-btn">🔍 测试连接</button>
+    </div>
+
+    <div class="section">
+      <label>悬浮窗控制</label>
+      <div class="toggle-row">
+        <span>显示悬浮窗</span>
+        <label class="switch">
+          <input type="checkbox" id="showPanel" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
