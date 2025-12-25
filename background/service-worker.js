@@ -2,6 +2,9 @@
 try {
   importScripts('lib/nacl.js');
   console.log('[SQT] nacl.js 加载成功');
+  console.log('[SQT] self.nacl:', self.nacl);
+  console.log('[SQT] self.nacl.sign:', typeof self.nacl?.sign);
+  console.log('[SQT] self.nacl.getPublicKey:', typeof self.nacl?.getPublicKey);
 } catch (e) {
   console.error('[SQT] 加载 nacl.js 失败:', e);
 }
@@ -245,19 +248,29 @@ async function createOrder(inputMint, outputMint, amount, taker) {
 
 // 签名交易
 function signTransaction(transactionBase64, secretKey) {
+  // 检查 nacl 是否可用
+  if (!self.nacl || typeof self.nacl.sign !== 'function') {
+    console.error('[SQT] nacl 未正确加载:', self.nacl);
+    throw new Error('签名库未加载');
+  }
+
   // 解码 base64 交易
   const txBytes = Uint8Array.from(atob(transactionBase64), c => c.charCodeAt(0));
+  console.log('[SQT] 交易字节长度:', txBytes.length);
 
   // 解析 VersionedTransaction
   const numSignatures = txBytes[0];
   const signatureSize = 64;
   const signaturesEnd = 1 + numSignatures * signatureSize;
+  console.log('[SQT] 签名数量:', numSignatures, '签名区结束:', signaturesEnd);
 
   // 消息部分 (用于签名)
   const message = txBytes.slice(signaturesEnd);
+  console.log('[SQT] 消息长度:', message.length);
 
   // 使用 Ed25519 签名消息
   const signature = self.nacl.sign(message, secretKey);
+  console.log('[SQT] 签名完成, 长度:', signature.length);
 
   // 将签名插入到交易中
   const signedTx = new Uint8Array(txBytes.length);
