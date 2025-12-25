@@ -8,12 +8,8 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://quote-api.jup.ag/*",
-    "https://price.jup.ag/*",
-    "https://tokens.jup.ag/*",
-    "https://api.mainnet-beta.solana.com/*",
-    "https://*.helius-rpc.com/*",
-    "https://*.solana.com/*"
+    "https://*/*",
+    "http://*/*"
   ],
   "action": {
     "default_popup": "popup/popup.html",
