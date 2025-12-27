@@ -96,15 +96,23 @@ async function getSolBalance(publicKey) {
   return 0;
 }
 
-// 获取 Token 余额
-async function getTokenBalance(publicKey, tokenMint) {
+// 获取 Token 余额 (返回原始数量和UI数量)
+async function getTokenBalance(publicKey, tokenMint, forceRefresh = false) {
+  // 如果强制刷新，清除缓存
+  if (forceRefresh) {
+    balanceCache = { data: null, timestamp: 0, address: '' };
+  }
+
   const balances = await getBalancesFromJupiter(publicKey);
 
   if (balances[tokenMint]) {
-    return balances[tokenMint].uiAmount || 0;
+    return {
+      raw: balances[tokenMint].amount || '0',
+      uiAmount: balances[tokenMint].uiAmount || 0
+    };
   }
 
-  return 0;
+  return { raw: '0', uiAmount: 0 };
 }
 
 // 获取代币信息
@@ -234,13 +242,22 @@ async function executeTrade(tradeType, tokenCA, amount) {
     inputMint = tokenCA;
     outputMint = SOL_MINT;
 
-    const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA);
-    if (tokenBalance === 0) throw new Error('没有持仓');
+    // 卖出前强制刷新余额
+    const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, true);
+    console.log('[SQT] 代币余额:', tokenBalance);
 
-    const tokenInfo = await getTokenInfo(tokenCA);
-    const decimals = tokenInfo.decimals || 9;
-    const sellAmount = tokenBalance * (amount / 100);
-    tradeAmount = Math.floor(sellAmount * Math.pow(10, decimals));
+    if (tokenBalance.uiAmount === 0) throw new Error('没有持仓');
+
+    // 直接使用原始数量计算
+    const rawBalance = BigInt(tokenBalance.raw);
+    const sellPercent = BigInt(Math.floor(amount)); // 百分比
+    tradeAmount = (rawBalance * sellPercent / 100n).toString();
+
+    console.log('[SQT] 卖出计算:', {
+      rawBalance: tokenBalance.raw,
+      percent: amount,
+      tradeAmount
+    });
   }
 
   // 1. 创建订单 (获取报价和未签名交易)
@@ -297,7 +314,8 @@ async function handleMessage(message) {
       const solBalance = await getSolBalance(publicKeyBase58);
       let tokenBalance = 0;
       if (message.tokenCA) {
-        tokenBalance = await getTokenBalance(publicKeyBase58, message.tokenCA);
+        const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+        tokenBalance = tokenData.uiAmount;
       }
       return { success: true, solBalance, tokenBalance };
     }
@@ -309,7 +327,8 @@ async function handleMessage(message) {
       let balance = 0;
       if (settings.privateKey) {
         const { publicKeyBase58 } = getKeypair(settings.privateKey);
-        balance = await getTokenBalance(publicKeyBase58, message.tokenCA);
+        const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+        balance = tokenData.uiAmount;
       }
       return { success: true, tokenInfo, balance };
     }

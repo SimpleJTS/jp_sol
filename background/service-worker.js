@@ -17143,12 +17143,18 @@ Message: ${transactionMessage}.
     }
     return 0;
   }
-  async function getTokenBalance(publicKey2, tokenMint) {
+  async function getTokenBalance(publicKey2, tokenMint, forceRefresh = false) {
+    if (forceRefresh) {
+      balanceCache = { data: null, timestamp: 0, address: "" };
+    }
     const balances = await getBalancesFromJupiter(publicKey2);
     if (balances[tokenMint]) {
-      return balances[tokenMint].uiAmount || 0;
+      return {
+        raw: balances[tokenMint].amount || "0",
+        uiAmount: balances[tokenMint].uiAmount || 0
+      };
     }
-    return 0;
+    return { raw: "0", uiAmount: 0 };
   }
   async function getTokenInfo(tokenMint) {
     try {
@@ -17239,12 +17245,17 @@ Message: ${transactionMessage}.
     } else {
       inputMint = tokenCA;
       outputMint = SOL_MINT;
-      const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA);
-      if (tokenBalance === 0) throw new Error("\u6CA1\u6709\u6301\u4ED3");
-      const tokenInfo = await getTokenInfo(tokenCA);
-      const decimals = tokenInfo.decimals || 9;
-      const sellAmount = tokenBalance * (amount / 100);
-      tradeAmount = Math.floor(sellAmount * Math.pow(10, decimals));
+      const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, true);
+      console.log("[SQT] \u4EE3\u5E01\u4F59\u989D:", tokenBalance);
+      if (tokenBalance.uiAmount === 0) throw new Error("\u6CA1\u6709\u6301\u4ED3");
+      const rawBalance = BigInt(tokenBalance.raw);
+      const sellPercent = BigInt(Math.floor(amount));
+      tradeAmount = (rawBalance * sellPercent / 100n).toString();
+      console.log("[SQT] \u5356\u51FA\u8BA1\u7B97:", {
+        rawBalance: tokenBalance.raw,
+        percent: amount,
+        tradeAmount
+      });
     }
     console.log("[SQT] \u521B\u5EFA\u8BA2\u5355...");
     const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58);
@@ -17285,7 +17296,8 @@ Message: ${transactionMessage}.
         const solBalance = await getSolBalance(publicKeyBase58);
         let tokenBalance = 0;
         if (message.tokenCA) {
-          tokenBalance = await getTokenBalance(publicKeyBase58, message.tokenCA);
+          const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+          tokenBalance = tokenData.uiAmount;
         }
         return { success: true, solBalance, tokenBalance };
       }
@@ -17295,7 +17307,8 @@ Message: ${transactionMessage}.
         let balance = 0;
         if (settings.privateKey) {
           const { publicKeyBase58 } = getKeypair(settings.privateKey);
-          balance = await getTokenBalance(publicKeyBase58, message.tokenCA);
+          const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+          balance = tokenData.uiAmount;
         }
         return { success: true, tokenInfo, balance };
       }
