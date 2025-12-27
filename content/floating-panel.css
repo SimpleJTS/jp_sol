@@ -1,16 +1,16 @@
-/* Solana Quick Trade 悬浮面板样式 */
+/* Solana Quick Trade 悬浮面板样式 - 紧凑版 */
 
 #sqt-floating-panel {
   position: fixed;
   top: 20px;
   right: 20px;
-  width: 300px;
+  width: 280px;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   color: #fff;
   z-index: 2147483647;
   user-select: none;
@@ -19,8 +19,8 @@
 }
 
 #sqt-floating-panel.minimized {
-  width: 50px;
-  height: 50px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   cursor: pointer;
 }
@@ -45,14 +45,14 @@
 
 #sqt-floating-panel.minimized .sqt-mini-icon {
   display: flex;
-  font-size: 24px;
+  font-size: 20px;
 }
 
 .sqt-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 15px;
+  padding: 8px 12px;
   background: rgba(0, 0, 0, 0.3);
   cursor: move;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -61,9 +61,9 @@
 .sqt-header-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   background: linear-gradient(90deg, #00d4aa, #7b68ee);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -72,12 +72,12 @@
 
 .sqt-mini-icon {
   display: none;
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .sqt-header-btns {
   display: flex;
-  gap: 8px;
+  gap: 4px;
 }
 
 .sqt-header-btn {
@@ -85,8 +85,8 @@
   border: none;
   color: #888;
   cursor: pointer;
-  font-size: 14px;
-  padding: 4px;
+  font-size: 12px;
+  padding: 3px;
   border-radius: 4px;
   transition: all 0.2s;
 }
@@ -97,18 +97,18 @@
 }
 
 .sqt-content {
-  padding: 15px;
+  padding: 10px;
 }
 
-/* 余额区域 */
+/* 余额区域 - 更紧凑 */
 .sqt-balance {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-around;
   align-items: center;
-  padding: 12px;
+  padding: 6px 8px;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  margin-bottom: 12px;
+  border-radius: 6px;
+  margin-bottom: 8px;
 }
 
 .sqt-balance-item {
@@ -116,13 +116,13 @@
 }
 
 .sqt-balance-label {
-  font-size: 11px;
+  font-size: 10px;
   color: #888;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .sqt-balance-value {
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -137,18 +137,18 @@
 /* CA 输入 */
 .sqt-ca-input {
   display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .sqt-ca-input input {
   flex: 1;
-  padding: 10px 12px;
+  padding: 7px 10px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.05);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   outline: none;
   transition: all 0.2s;
 }
@@ -163,13 +163,14 @@
 }
 
 .sqt-paste-btn {
-  padding: 10px 14px;
+  padding: 7px 10px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.05);
   color: #fff;
   cursor: pointer;
   transition: all 0.2s;
+  font-size: 12px;
 }
 
 .sqt-paste-btn:hover {
@@ -179,21 +180,22 @@
 /* Token 信息 */
 .sqt-token-info {
   display: none;
-  padding: 10px;
+  padding: 6px 8px;
   background: rgba(123, 104, 238, 0.1);
-  border-radius: 8px;
-  margin-bottom: 12px;
-  font-size: 12px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 11px;
 }
 
 .sqt-token-info.visible {
-  display: block;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .sqt-token-name {
   font-weight: 600;
   color: #7b68ee;
-  margin-bottom: 4px;
 }
 
 .sqt-token-price {
@@ -202,39 +204,39 @@
 
 /* 交易按钮区域 */
 .sqt-section-title {
-  font-size: 12px;
+  font-size: 11px;
   color: #888;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .sqt-buy-section, .sqt-sell-section {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .sqt-btn-group {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 5px;
 }
 
 /* 自定义买入 */
 .sqt-custom-buy {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 5px;
+  margin-top: 5px;
 }
 
 .sqt-custom-buy input {
   flex: 1;
-  padding: 10px 12px;
+  padding: 6px 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.05);
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
   transition: all 0.2s;
 }
@@ -249,15 +251,15 @@
 }
 
 .sqt-custom-buy .sqt-trade-btn {
-  padding: 10px 16px;
+  padding: 6px 12px;
   white-space: nowrap;
 }
 
 .sqt-trade-btn {
-  padding: 12px 8px;
+  padding: 8px 6px;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
@@ -276,8 +278,8 @@
 }
 
 .sqt-trade-btn.buy:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0, 212, 170, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 212, 170, 0.4);
 }
 
 .sqt-trade-btn.buy:active:not(:disabled) {
@@ -290,8 +292,8 @@
 }
 
 .sqt-trade-btn.sell:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(255, 107, 107, 0.4);
 }
 
 .sqt-trade-btn.sell:active:not(:disabled) {
@@ -308,9 +310,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 16px;
-  height: 16px;
-  margin: -8px 0 0 -8px;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
   border: 2px solid transparent;
   border-top-color: currentColor;
   border-radius: 50%;
@@ -325,11 +327,11 @@
 
 /* 状态消息 */
 .sqt-status {
-  padding: 10px;
-  border-radius: 8px;
-  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
   text-align: center;
-  margin-top: 12px;
+  margin-top: 8px;
   display: none;
 }
 
@@ -360,47 +362,33 @@
 /* 设置提示 */
 .sqt-no-wallet {
   text-align: center;
-  padding: 20px;
+  padding: 15px;
   color: #888;
 }
 
 .sqt-no-wallet p {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
 }
 
 .sqt-open-settings {
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: linear-gradient(135deg, #00d4aa 0%, #00a884 100%);
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #000;
   font-weight: 600;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .sqt-open-settings:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 15px rgba(0, 212, 170, 0.3);
+  box-shadow: 0 3px 10px rgba(0, 212, 170, 0.3);
 }
 
-/* 刷新按钮 */
-.sqt-refresh-btn {
-  background: none;
-  border: none;
-  color: #888;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.sqt-refresh-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.sqt-refresh-btn.spinning {
+/* 刷新按钮动画 */
+.sqt-header-btn.spinning {
   animation: sqt-spin 1s linear infinite;
 }

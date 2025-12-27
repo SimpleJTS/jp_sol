@@ -280,3 +280,23 @@ input:checked + .slider:before {
   background: rgba(100,149,237,0.2);
   color: #6495ed;
 }
+
+.buy-amounts-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.buy-amounts-grid input {
+  width: 100%;
+  padding: 8px 6px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.section small {
+  display: block;
+  margin-top: 6px;
+  color: #666;
+  font-size: 11px;
+}
