@@ -7,8 +7,8 @@
     "lib": "lib"
   },
   "scripts": {
-    "build": "esbuild src/service-worker.js --bundle --outfile=background/service-worker.js --format=iife --target=chrome100 --define:global=globalThis",
-    "watch": "esbuild src/service-worker.js --bundle --outfile=background/service-worker.js --format=iife --target=chrome100 --define:global=globalThis --watch"
+    "build": "npx esbuild src/service-worker.js --bundle --outfile=background/service-worker.js --format=iife --target=chrome100 --define:global=globalThis",
+    "watch": "npx esbuild src/service-worker.js --bundle --outfile=background/service-worker.js --format=iife --target=chrome100 --define:global=globalThis --watch"
   },
   "repository": {
     "type": "git",
