@@ -4,7 +4,9 @@
   position: fixed !important;
   top: 20px;
   right: 20px;
-  width: 280px !important;
+  width: auto !important;
+  min-width: 220px !important;
+  max-width: 320px !important;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 12px !important;
@@ -113,6 +115,8 @@
   background: rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .sqt-balance-item {
@@ -193,17 +197,13 @@
 
 .sqt-token-info.visible {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
 }
 
 .sqt-token-name {
   font-weight: 600;
   color: #7b68ee;
-}
-
-.sqt-token-price {
-  color: #aaa;
 }
 
 /* 交易按钮区域 */
@@ -221,9 +221,14 @@
 }
 
 .sqt-btn-group {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 5px;
+}
+
+.sqt-btn-group .sqt-trade-btn {
+  flex: 1 1 auto;
+  min-width: 45px;
 }
 
 /* 自定义买入 */

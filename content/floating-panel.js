@@ -58,10 +58,9 @@
             <button class="sqt-paste-btn" id="sqt-paste" title="粘贴">📋</button>
           </div>
 
-          <!-- Token 信息 -->
+          <!-- Token 信息 (仅显示名称) -->
           <div class="sqt-token-info" id="sqt-token-info">
             <div class="sqt-token-name" id="sqt-token-name">-</div>
-            <div class="sqt-token-price" id="sqt-token-price">-</div>
           </div>
 
           <!-- 买入区域 -->
@@ -279,8 +278,6 @@
         const tokenInfoDiv = document.getElementById('sqt-token-info');
         tokenInfoDiv.classList.add('visible');
         document.getElementById('sqt-token-name').textContent = response.tokenInfo.symbol || 'Unknown';
-        document.getElementById('sqt-token-price').textContent = response.tokenInfo.price ?
-          `$${response.tokenInfo.price.toFixed(8)}` : '价格未知';
         document.getElementById('sqt-token-balance').textContent = formatNumber(response.balance);
 
         hideStatus();
