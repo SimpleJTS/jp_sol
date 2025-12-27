@@ -58,11 +58,6 @@
             <button class="sqt-paste-btn" id="sqt-paste" title="粘贴">📋</button>
           </div>
 
-          <!-- Token 信息 (仅显示名称) -->
-          <div class="sqt-token-info" id="sqt-token-info">
-            <div class="sqt-token-name" id="sqt-token-name">-</div>
-          </div>
-
           <!-- 买入区域 -->
           <div class="sqt-buy-section">
             <div class="sqt-section-title">🟢 买入 (SOL)</div>
@@ -258,7 +253,6 @@
     panelState.currentCA = ca;
 
     if (!ca || ca.length < 32) {
-      document.getElementById('sqt-token-info').classList.remove('visible');
       document.getElementById('sqt-token-balance').textContent = '-';
       return;
     }
@@ -274,12 +268,7 @@
       if (response.success) {
         panelState.tokenInfo = response.tokenInfo;
         panelState.tokenBalance = response.balance || 0;
-
-        const tokenInfoDiv = document.getElementById('sqt-token-info');
-        tokenInfoDiv.classList.add('visible');
-        document.getElementById('sqt-token-name').textContent = response.tokenInfo.symbol || 'Unknown';
         document.getElementById('sqt-token-balance').textContent = formatNumber(response.balance);
-
         hideStatus();
       } else {
         showStatus(response.error || '获取代币信息失败', 'error');

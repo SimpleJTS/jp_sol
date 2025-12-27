@@ -4,9 +4,9 @@
   position: fixed !important;
   top: 20px;
   right: 20px;
-  width: auto !important;
-  min-width: 220px !important;
-  max-width: 320px !important;
+  width: 260px !important;
+  min-width: 200px !important;
+  max-width: 400px !important;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 12px !important;
@@ -16,12 +16,12 @@
   color: #fff !important;
   z-index: 2147483647 !important;
   user-select: none !important;
-  overflow: hidden !important;
-  transition: all 0.3s ease;
+  overflow: visible !important;
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
   pointer-events: auto !important;
+  resize: horizontal !important;
 }
 
 #sqt-floating-panel.minimized {
@@ -183,27 +183,6 @@
 
 .sqt-paste-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-}
-
-/* Token 信息 */
-.sqt-token-info {
-  display: none;
-  padding: 6px 8px;
-  background: rgba(123, 104, 238, 0.1);
-  border-radius: 6px;
-  margin-bottom: 8px;
-  font-size: 11px;
-}
-
-.sqt-token-info.visible {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.sqt-token-name {
-  font-weight: 600;
-  color: #7b68ee;
 }
 
 /* 交易按钮区域 */
