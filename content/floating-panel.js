@@ -15,11 +15,12 @@
     solBalance: 0,
     tokenBalance: 0,
     tokenInfo: null,
-    isWalletConfigured: false
+    isWalletConfigured: false,
+    buyAmounts: [0.1, 0.5, 1, 1.2]  // 默认值，会从设置加载
   };
 
-  // 买入预设 (SOL)
-  const BUY_PRESETS = [0.1, 0.5, 1, 1.2];
+  // 默认买入预设 (SOL)
+  const DEFAULT_BUY_PRESETS = [0.1, 0.5, 1, 1.2];
   // 卖出预设 (百分比)
   const SELL_PRESETS = [10, 30, 50, 100];
 
@@ -67,9 +68,7 @@
           <div class="sqt-buy-section">
             <div class="sqt-section-title">🟢 买入 (SOL)</div>
             <div class="sqt-btn-group" id="sqt-buy-btns">
-              ${BUY_PRESETS.map(amount => `
-                <button class="sqt-trade-btn buy" data-amount="${amount}">${amount}</button>
-              `).join('')}
+              <!-- 买入按钮会在加载设置后动态生成 -->
             </div>
             <div class="sqt-custom-buy">
               <input type="number" id="sqt-custom-amount" placeholder="自定义" min="0.01" step="0.01">
@@ -219,13 +218,7 @@
       }, 500);
     });
 
-    // 买入按钮
-    panel.querySelectorAll('#sqt-buy-btns .sqt-trade-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const amount = parseFloat(btn.dataset.amount);
-        await executeTrade('buy', amount);
-      });
-    });
+    // 买入按钮事件在 updateBuyButtons() 中绑定
 
     // 自定义买入
     const customBuyBtn = panel.querySelector('#sqt-custom-buy-btn');
@@ -406,11 +399,37 @@
     return num.toFixed(4);
   }
 
-  // 检查钱包配置
+  // 更新买入按钮
+  function updateBuyButtons() {
+    const container = document.getElementById('sqt-buy-btns');
+    if (!container) return;
+
+    container.innerHTML = panelState.buyAmounts.map(amount => `
+      <button class="sqt-trade-btn buy" data-amount="${amount}">${amount}</button>
+    `).join('');
+
+    // 重新绑定事件
+    container.querySelectorAll('.sqt-trade-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const amount = parseFloat(btn.dataset.amount);
+        await executeTrade('buy', amount);
+      });
+    });
+  }
+
+  // 检查钱包配置并加载设置
   async function checkWalletConfig() {
     try {
       const result = await chrome.storage.local.get('solanaQuickTrade');
       const settings = result.solanaQuickTrade;
+
+      // 加载自定义买入金额
+      if (settings && settings.buyAmounts && settings.buyAmounts.length === 4) {
+        panelState.buyAmounts = settings.buyAmounts;
+      } else {
+        panelState.buyAmounts = DEFAULT_BUY_PRESETS;
+      }
+      updateBuyButtons();
 
       if (settings && settings.privateKey) {
         panelState.isWalletConfigured = true;
@@ -428,9 +447,80 @@
     }
   }
 
+  // AXIOM 页面 CA 自动检测
+  function detectAxiomCA() {
+    // 只在 AXIOM 网站运行
+    if (!window.location.hostname.includes('axiom.trade')) return null;
+
+    // 方法1: 从 solscan 链接提取
+    const solscanLinks = document.querySelectorAll('a[href*="solscan.io/account/"]');
+    for (const link of solscanLinks) {
+      const match = link.href.match(/solscan\.io\/account\/([A-Za-z0-9]{32,44})/);
+      if (match && match[1]) {
+        // 排除 SOL 的 mint 地址
+        if (match[1] !== 'So11111111111111111111111111111111111111112') {
+          console.log('[SQT] 从 solscan 链接检测到 CA:', match[1]);
+          return match[1];
+        }
+      }
+    }
+
+    // 方法2: 从 URL 提取 (如果 URL 中有代币地址)
+    const urlMatch = window.location.href.match(/\/([A-Za-z0-9]{32,44}pump)(?:\/|$|\?)/);
+    if (urlMatch && urlMatch[1]) {
+      console.log('[SQT] 从 URL 检测到 CA:', urlMatch[1]);
+      return urlMatch[1];
+    }
+
+    return null;
+  }
+
+  // 自动填入 CA
+  function autoFillCA() {
+    const ca = detectAxiomCA();
+    if (ca && ca !== panelState.currentCA) {
+      console.log('[SQT] 自动填入 CA:', ca);
+      const caInput = document.getElementById('sqt-ca');
+      if (caInput) {
+        caInput.value = ca;
+        handleCAChange(ca);
+      }
+    }
+  }
+
+  // 监听页面变化 (SPA 支持)
+  function observePageChanges() {
+    let lastUrl = window.location.href;
+
+    // URL 变化检测
+    const checkUrl = () => {
+      if (window.location.href !== lastUrl) {
+        lastUrl = window.location.href;
+        setTimeout(autoFillCA, 500);  // 等待页面加载
+      }
+    };
+
+    // 定期检查 URL
+    setInterval(checkUrl, 1000);
+
+    // DOM 变化监听
+    const observer = new MutationObserver((mutations) => {
+      // 如果当前没有 CA，尝试检测
+      if (!panelState.currentCA) {
+        autoFillCA();
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
   // 监听来自 popup 的消息
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'SETTINGS_UPDATED') {
+      // 重新加载设置（包括自定义买入金额）
       checkWalletConfig();
     } else if (message.type === 'TOGGLE_PANEL') {
       const panel = document.getElementById('sqt-floating-panel');
@@ -448,6 +538,12 @@
     initEvents(panel);
     loadPosition(panel);
     checkWalletConfig();
+
+    // 自动检测 CA (延迟执行，等待页面加载)
+    setTimeout(autoFillCA, 1000);
+
+    // 监听页面变化
+    observePageChanges();
   }
 
   // 等待 DOM 准备就绪

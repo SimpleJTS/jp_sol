@@ -8,6 +8,12 @@ const customRpcInput = document.getElementById('customRpc');
 const slippageBtns = document.querySelectorAll('.slip-btn');
 const customSlippage = document.getElementById('customSlippage');
 const priorityFeeSelect = document.getElementById('priorityFee');
+const buyAmountInputs = [
+  document.getElementById('buyAmount1'),
+  document.getElementById('buyAmount2'),
+  document.getElementById('buyAmount3'),
+  document.getElementById('buyAmount4')
+];
 const saveBtn = document.getElementById('saveBtn');
 const testBtn = document.getElementById('testBtn');
 const showPanelToggle = document.getElementById('showPanel');
@@ -17,6 +23,7 @@ const walletBalance = document.getElementById('walletBalance');
 const statusDiv = document.getElementById('status');
 
 let currentSlippage = 1;
+const defaultBuyAmounts = [0.1, 0.5, 1, 1.2];
 
 // 初始化
 document.addEventListener('DOMContentLoaded', loadSettings);
@@ -82,11 +89,18 @@ saveBtn.addEventListener('click', async () => {
     }
   }
 
+  // 收集买入金额
+  const buyAmounts = buyAmountInputs.map((input, i) => {
+    const val = parseFloat(input.value);
+    return isNaN(val) || val <= 0 ? defaultBuyAmounts[i] : val;
+  });
+
   const settings = {
     privateKey: privateKey,
     rpcEndpoint: rpcEndpoint,
     slippage: currentSlippage,
     priorityFee: parseFloat(priorityFeeSelect.value),
+    buyAmounts: buyAmounts,
     showPanel: showPanelToggle.checked,
     updatedAt: Date.now()
   };
@@ -176,6 +190,12 @@ async function loadSettings() {
       }
 
       showPanelToggle.checked = settings.showPanel !== false;
+
+      // 加载买入金额
+      const amounts = settings.buyAmounts || defaultBuyAmounts;
+      buyAmountInputs.forEach((input, i) => {
+        input.value = amounts[i] || defaultBuyAmounts[i];
+      });
 
       // 如果有私钥，显示钱包信息
       if (settings.privateKey) {
