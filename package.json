@@ -1,0 +1,25 @@
+{
+  "name": "jp_sol",
+  "version": "1.0.0",
+  "description": "快捷 Solana 代币交易插件，一键买卖，无需确认。",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "build": "esbuild src/service-worker.js --bundle --outfile=background/service-worker.js --format=iife --target=chrome100 --define:global=globalThis",
+    "watch": "esbuild src/service-worker.js --bundle --outfile=background/service-worker.js --format=iife --target=chrome100 --define:global=globalThis --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:44848/git/SimpleJTS/jp_sol"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
+    "esbuild": "^0.27.2"
+  }
+}
