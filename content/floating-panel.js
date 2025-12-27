@@ -517,6 +517,21 @@
     });
   }
 
+  // 确保面板存在 (防止被 SPA 移除)
+  function ensurePanelExists() {
+    const existingPanel = document.getElementById('sqt-floating-panel');
+    if (!existingPanel) {
+      console.log('[SQT] 面板被移除，重新注入...');
+      // 重新创建面板
+      const panel = createPanel();
+      initDrag(panel);
+      initEvents(panel);
+      loadPosition(panel);
+      checkWalletConfig();
+      setTimeout(autoFillCA, 500);
+    }
+  }
+
   // 监听来自 popup 的消息
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'SETTINGS_UPDATED') {
@@ -544,6 +559,9 @@
 
     // 监听页面变化
     observePageChanges();
+
+    // 定期检查面板是否存在 (防止被 SPA 移除)
+    setInterval(ensurePanelExists, 2000);
   }
 
   // 等待 DOM 准备就绪
