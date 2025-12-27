@@ -17079,7 +17079,8 @@ Message: ${transactionMessage}.
 
   // src/service-worker.js
   console.log("[SQT] Service Worker \u52A0\u8F7D\u4E2D...");
-  var JUPITER_ULTRA_API = "https://lite-api.jup.ag/ultra/v1";
+  var JUPITER_ULTRA_API = "https://api.jup.ag/ultra/v1";
+  var JUPITER_BALANCE_API = "https://api.jup.ag/ultra/v1/balances";
   var SOL_MINT = "So11111111111111111111111111111111111111112";
   var LAMPORTS_PER_SOL = 1e9;
   function getKeypair(privateKeyBase58) {
@@ -17103,21 +17104,24 @@ Message: ${transactionMessage}.
     const result = await chrome.storage.local.get("solanaQuickTrade");
     return result.solanaQuickTrade || {};
   }
-  var JUPITER_BALANCE_API = "https://lite-api.jup.ag/ultra/v1/balances";
   var balanceCache = {
     data: null,
     timestamp: 0,
     address: ""
   };
   var CACHE_TTL = 5e3;
-  async function getBalancesFromJupiter(publicKey2) {
+  async function getBalancesFromJupiter(publicKey2, apiKey) {
     const now = Date.now();
     if (balanceCache.address === publicKey2 && balanceCache.data && now - balanceCache.timestamp < CACHE_TTL) {
       console.log("[SQT] \u4F7F\u7528\u7F13\u5B58\u4F59\u989D");
       return balanceCache.data;
     }
     console.log("[SQT] Jupiter Ultra API \u83B7\u53D6\u4F59\u989D...");
-    const res = await fetch(`${JUPITER_BALANCE_API}/${publicKey2}`);
+    const headers = {};
+    if (apiKey) {
+      headers["x-api-key"] = apiKey;
+    }
+    const res = await fetch(`${JUPITER_BALANCE_API}/${publicKey2}`, { headers });
     if (!res.ok) {
       throw new Error(`Jupiter API \u9519\u8BEF: ${res.status}`);
     }
@@ -17133,8 +17137,8 @@ Message: ${transactionMessage}.
     console.log("[SQT] Jupiter \u4F59\u989D:", data);
     return data;
   }
-  async function getSolBalance(publicKey2) {
-    const balances = await getBalancesFromJupiter(publicKey2);
+  async function getSolBalance(publicKey2, apiKey) {
+    const balances = await getBalancesFromJupiter(publicKey2, apiKey);
     if (balances.SOL) {
       return balances.SOL.uiAmount || 0;
     }
@@ -17143,11 +17147,11 @@ Message: ${transactionMessage}.
     }
     return 0;
   }
-  async function getTokenBalance(publicKey2, tokenMint, forceRefresh = false) {
+  async function getTokenBalance(publicKey2, tokenMint, apiKey, forceRefresh = false) {
     if (forceRefresh) {
       balanceCache = { data: null, timestamp: 0, address: "" };
     }
-    const balances = await getBalancesFromJupiter(publicKey2);
+    const balances = await getBalancesFromJupiter(publicKey2, apiKey);
     if (balances[tokenMint]) {
       return {
         raw: balances[tokenMint].amount || "0",
@@ -17179,7 +17183,7 @@ Message: ${transactionMessage}.
       return { mint: tokenMint, symbol: "Unknown", price: null, decimals: 9 };
     }
   }
-  async function createOrder(inputMint, outputMint, amount, taker) {
+  async function createOrder(inputMint, outputMint, amount, taker, apiKey) {
     console.log("[SQT] \u83B7\u53D6\u8BA2\u5355...", { inputMint, outputMint, amount });
     const params = new URLSearchParams({
       inputMint,
@@ -17189,7 +17193,11 @@ Message: ${transactionMessage}.
     });
     const url = `${JUPITER_ULTRA_API}/order?${params}`;
     console.log("[SQT] \u8BF7\u6C42 URL:", url);
-    const res = await fetch(url);
+    const headers = {};
+    if (apiKey) {
+      headers["x-api-key"] = apiKey;
+    }
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`\u8BA2\u5355\u83B7\u53D6\u5931\u8D25: ${res.status} - ${text}`);
@@ -17212,11 +17220,15 @@ Message: ${transactionMessage}.
     const signedTxBytes = transaction.serialize();
     return btoa(String.fromCharCode(...signedTxBytes));
   }
-  async function executeOrder(signedTransaction, requestId) {
+  async function executeOrder(signedTransaction, requestId, apiKey) {
     console.log("[SQT] \u6267\u884C\u4EA4\u6613...", requestId);
+    const headers = { "Content-Type": "application/json" };
+    if (apiKey) {
+      headers["x-api-key"] = apiKey;
+    }
     const res = await fetch(`${JUPITER_ULTRA_API}/execute`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         signedTransaction,
         requestId
@@ -17236,7 +17248,9 @@ Message: ${transactionMessage}.
   async function executeTrade(tradeType, tokenCA, amount) {
     const settings = await getSettings();
     if (!settings.privateKey) throw new Error("\u94B1\u5305\u672A\u914D\u7F6E");
+    if (!settings.jupiterApiKey) throw new Error("Jupiter API Key \u672A\u914D\u7F6E");
     const { keypair, publicKeyBase58 } = getKeypair(settings.privateKey);
+    const apiKey = settings.jupiterApiKey;
     let inputMint, outputMint, tradeAmount;
     if (tradeType === "buy") {
       inputMint = SOL_MINT;
@@ -17245,7 +17259,7 @@ Message: ${transactionMessage}.
     } else {
       inputMint = tokenCA;
       outputMint = SOL_MINT;
-      const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, true);
+      const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, apiKey, true);
       console.log("[SQT] \u4EE3\u5E01\u4F59\u989D:", tokenBalance);
       if (tokenBalance.uiAmount === 0) throw new Error("\u6CA1\u6709\u6301\u4ED3");
       const rawBalance = BigInt(tokenBalance.raw);
@@ -17258,13 +17272,13 @@ Message: ${transactionMessage}.
       });
     }
     console.log("[SQT] \u521B\u5EFA\u8BA2\u5355...");
-    const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58);
+    const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58, apiKey);
     if (!order.transaction) {
       throw new Error("\u672A\u83B7\u53D6\u5230\u4EA4\u6613\u6570\u636E");
     }
     const signedTx = signTransaction(order.transaction, keypair);
     console.log("[SQT] \u63D0\u4EA4\u4EA4\u6613...");
-    const result = await executeOrder(signedTx, order.requestId);
+    const result = await executeOrder(signedTx, order.requestId, apiKey);
     if (result.status === "Failed") {
       throw new Error(result.error || "\u4EA4\u6613\u5931\u8D25");
     }
@@ -17286,17 +17300,20 @@ Message: ${transactionMessage}.
     switch (message.type) {
       case "GET_WALLET_INFO": {
         const { publicKeyBase58 } = getKeypair(message.privateKey);
-        const balance = await getSolBalance(publicKeyBase58);
+        const settings = await getSettings();
+        const apiKey = settings.jupiterApiKey;
+        const balance = await getSolBalance(publicKeyBase58, apiKey);
         return { success: true, address: publicKeyBase58, balance };
       }
       case "GET_BALANCES": {
         const settings = await getSettings();
         if (!settings.privateKey) throw new Error("\u94B1\u5305\u672A\u914D\u7F6E");
         const { publicKeyBase58 } = getKeypair(settings.privateKey);
-        const solBalance = await getSolBalance(publicKeyBase58);
+        const apiKey = settings.jupiterApiKey;
+        const solBalance = await getSolBalance(publicKeyBase58, apiKey);
         let tokenBalance = 0;
         if (message.tokenCA) {
-          const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+          const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA, apiKey);
           tokenBalance = tokenData.uiAmount;
         }
         return { success: true, solBalance, tokenBalance };
@@ -17307,7 +17324,8 @@ Message: ${transactionMessage}.
         let balance = 0;
         if (settings.privateKey) {
           const { publicKeyBase58 } = getKeypair(settings.privateKey);
-          const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+          const apiKey = settings.jupiterApiKey;
+          const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA, apiKey);
           balance = tokenData.uiAmount;
         }
         return { success: true, tokenInfo, balance };

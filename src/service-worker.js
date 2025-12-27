@@ -4,8 +4,9 @@ import bs58 from 'bs58';
 
 console.log('[SQT] Service Worker 加载中...');
 
-// Jupiter Ultra API
-const JUPITER_ULTRA_API = 'https://lite-api.jup.ag/ultra/v1';
+// Jupiter Ultra API (已迁移到 api.jup.ag)
+const JUPITER_ULTRA_API = 'https://api.jup.ag/ultra/v1';
+const JUPITER_BALANCE_API = 'https://api.jup.ag/ultra/v1/balances';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const LAMPORTS_PER_SOL = 1000000000;
 
@@ -38,9 +39,6 @@ async function getSettings() {
   return result.solanaQuickTrade || {};
 }
 
-// Jupiter Ultra API - 获取所有余额
-const JUPITER_BALANCE_API = 'https://lite-api.jup.ag/ultra/v1/balances';
-
 // 缓存余额数据
 let balanceCache = {
   data: null,
@@ -50,7 +48,7 @@ let balanceCache = {
 const CACHE_TTL = 5000; // 5秒缓存
 
 // 从 Jupiter 获取所有余额
-async function getBalancesFromJupiter(publicKey) {
+async function getBalancesFromJupiter(publicKey, apiKey) {
   const now = Date.now();
   if (balanceCache.address === publicKey &&
       balanceCache.data &&
@@ -60,7 +58,11 @@ async function getBalancesFromJupiter(publicKey) {
   }
 
   console.log('[SQT] Jupiter Ultra API 获取余额...');
-  const res = await fetch(`${JUPITER_BALANCE_API}/${publicKey}`);
+  const headers = {};
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+  const res = await fetch(`${JUPITER_BALANCE_API}/${publicKey}`, { headers });
 
   if (!res.ok) {
     throw new Error(`Jupiter API 错误: ${res.status}`);
@@ -83,8 +85,8 @@ async function getBalancesFromJupiter(publicKey) {
 }
 
 // 获取 SOL 余额
-async function getSolBalance(publicKey) {
-  const balances = await getBalancesFromJupiter(publicKey);
+async function getSolBalance(publicKey, apiKey) {
+  const balances = await getBalancesFromJupiter(publicKey, apiKey);
 
   if (balances.SOL) {
     return balances.SOL.uiAmount || 0;
@@ -97,13 +99,13 @@ async function getSolBalance(publicKey) {
 }
 
 // 获取 Token 余额 (返回原始数量和UI数量)
-async function getTokenBalance(publicKey, tokenMint, forceRefresh = false) {
+async function getTokenBalance(publicKey, tokenMint, apiKey, forceRefresh = false) {
   // 如果强制刷新，清除缓存
   if (forceRefresh) {
     balanceCache = { data: null, timestamp: 0, address: '' };
   }
 
-  const balances = await getBalancesFromJupiter(publicKey);
+  const balances = await getBalancesFromJupiter(publicKey, apiKey);
 
   if (balances[tokenMint]) {
     return {
@@ -144,7 +146,7 @@ async function getTokenInfo(tokenMint) {
 }
 
 // Jupiter Ultra API - 获取订单 (GET 请求)
-async function createOrder(inputMint, outputMint, amount, taker) {
+async function createOrder(inputMint, outputMint, amount, taker, apiKey) {
   console.log('[SQT] 获取订单...', { inputMint, outputMint, amount });
 
   const params = new URLSearchParams({
@@ -157,7 +159,12 @@ async function createOrder(inputMint, outputMint, amount, taker) {
   const url = `${JUPITER_ULTRA_API}/order?${params}`;
   console.log('[SQT] 请求 URL:', url);
 
-  const res = await fetch(url);
+  const headers = {};
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+
+  const res = await fetch(url, { headers });
 
   if (!res.ok) {
     const text = await res.text();
@@ -198,12 +205,17 @@ function signTransaction(transactionBase64, keypair) {
 }
 
 // Jupiter Ultra API - 执行交易
-async function executeOrder(signedTransaction, requestId) {
+async function executeOrder(signedTransaction, requestId, apiKey) {
   console.log('[SQT] 执行交易...', requestId);
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
 
   const res = await fetch(`${JUPITER_ULTRA_API}/execute`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       signedTransaction,
       requestId
@@ -229,8 +241,10 @@ async function executeOrder(signedTransaction, requestId) {
 async function executeTrade(tradeType, tokenCA, amount) {
   const settings = await getSettings();
   if (!settings.privateKey) throw new Error('钱包未配置');
+  if (!settings.jupiterApiKey) throw new Error('Jupiter API Key 未配置');
 
   const { keypair, publicKeyBase58 } = getKeypair(settings.privateKey);
+  const apiKey = settings.jupiterApiKey;
 
   let inputMint, outputMint, tradeAmount;
 
@@ -243,7 +257,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
     outputMint = SOL_MINT;
 
     // 卖出前强制刷新余额
-    const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, true);
+    const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, apiKey, true);
     console.log('[SQT] 代币余额:', tokenBalance);
 
     if (tokenBalance.uiAmount === 0) throw new Error('没有持仓');
@@ -262,7 +276,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
 
   // 1. 创建订单 (获取报价和未签名交易)
   console.log('[SQT] 创建订单...');
-  const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58);
+  const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58, apiKey);
 
   if (!order.transaction) {
     throw new Error('未获取到交易数据');
@@ -273,7 +287,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
 
   // 3. 执行交易
   console.log('[SQT] 提交交易...');
-  const result = await executeOrder(signedTx, order.requestId);
+  const result = await executeOrder(signedTx, order.requestId, apiKey);
 
   if (result.status === 'Failed') {
     throw new Error(result.error || '交易失败');
@@ -302,7 +316,10 @@ async function handleMessage(message) {
   switch (message.type) {
     case 'GET_WALLET_INFO': {
       const { publicKeyBase58 } = getKeypair(message.privateKey);
-      const balance = await getSolBalance(publicKeyBase58);
+      // 从 storage 获取 API key 用于余额查询
+      const settings = await getSettings();
+      const apiKey = settings.jupiterApiKey;
+      const balance = await getSolBalance(publicKeyBase58, apiKey);
       return { success: true, address: publicKeyBase58, balance };
     }
 
@@ -311,10 +328,11 @@ async function handleMessage(message) {
       if (!settings.privateKey) throw new Error('钱包未配置');
 
       const { publicKeyBase58 } = getKeypair(settings.privateKey);
-      const solBalance = await getSolBalance(publicKeyBase58);
+      const apiKey = settings.jupiterApiKey;
+      const solBalance = await getSolBalance(publicKeyBase58, apiKey);
       let tokenBalance = 0;
       if (message.tokenCA) {
-        const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+        const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA, apiKey);
         tokenBalance = tokenData.uiAmount;
       }
       return { success: true, solBalance, tokenBalance };
@@ -327,7 +345,8 @@ async function handleMessage(message) {
       let balance = 0;
       if (settings.privateKey) {
         const { publicKeyBase58 } = getKeypair(settings.privateKey);
-        const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA);
+        const apiKey = settings.jupiterApiKey;
+        const tokenData = await getTokenBalance(publicKeyBase58, message.tokenCA, apiKey);
         balance = tokenData.uiAmount;
       }
       return { success: true, tokenInfo, balance };

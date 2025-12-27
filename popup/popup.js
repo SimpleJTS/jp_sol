@@ -3,6 +3,7 @@
 // DOM 元素
 const privateKeyInput = document.getElementById('privateKey');
 const toggleKeyBtn = document.getElementById('toggleKey');
+const jupiterApiKeyInput = document.getElementById('jupiterApiKey');
 const rpcSelect = document.getElementById('rpcEndpoint');
 const customRpcInput = document.getElementById('customRpc');
 const slippageBtns = document.querySelectorAll('.slip-btn');
@@ -68,6 +69,7 @@ customSlippage.addEventListener('input', () => {
 // 保存设置
 saveBtn.addEventListener('click', async () => {
   const privateKey = privateKeyInput.value.trim();
+  const jupiterApiKey = jupiterApiKeyInput.value.trim();
 
   if (!privateKey) {
     showStatus('请输入私钥', 'error');
@@ -77,6 +79,11 @@ saveBtn.addEventListener('click', async () => {
   // 验证私钥格式 (Base58, 通常是 64 或 88 字符)
   if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(privateKey)) {
     showStatus('私钥格式不正确', 'error');
+    return;
+  }
+
+  if (!jupiterApiKey) {
+    showStatus('请输入 Jupiter API Key', 'error');
     return;
   }
 
@@ -97,6 +104,7 @@ saveBtn.addEventListener('click', async () => {
 
   const settings = {
     privateKey: privateKey,
+    jupiterApiKey: jupiterApiKey,
     rpcEndpoint: rpcEndpoint,
     slippage: currentSlippage,
     priorityFee: parseFloat(priorityFeeSelect.value),
@@ -162,6 +170,7 @@ async function loadSettings() {
 
     if (settings) {
       privateKeyInput.value = settings.privateKey || '';
+      jupiterApiKeyInput.value = settings.jupiterApiKey || '';
 
       if (settings.rpcEndpoint && !settings.rpcEndpoint.includes('mainnet-beta') && !settings.rpcEndpoint.includes('helius')) {
         rpcSelect.value = 'custom';
