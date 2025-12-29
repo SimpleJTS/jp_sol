@@ -143,7 +143,7 @@ async function getTokenInfo(tokenMint) {
 }
 
 // Jupiter Quote API - 获取报价
-async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLIPPAGE) {
+async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLIPPAGE, apiKey = null) {
   console.log('[SQT] 获取报价...', { inputMint, outputMint, amount });
 
   const params = new URLSearchParams({
@@ -154,7 +154,12 @@ async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLI
   });
 
   const url = `${JUPITER_QUOTE_API}/quote?${params}`;
-  const res = await fetch(url);
+  const headers = {};
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+
+  const res = await fetch(url, { headers });
 
   if (!res.ok) {
     const text = await res.text();
@@ -171,12 +176,17 @@ async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLI
 }
 
 // Jupiter Swap API - 获取交易
-async function getSwapTransaction(quoteResponse, userPublicKey) {
+async function getSwapTransaction(quoteResponse, userPublicKey, apiKey = null) {
   console.log('[SQT] 获取 Swap 交易...');
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
 
   const res = await fetch(JUPITER_SWAP_API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       quoteResponse,
       userPublicKey,
@@ -368,13 +378,13 @@ async function executeTrade(tradeType, tokenCA, amount) {
 
   // Step 3: 获取报价
   const quoteStart = Date.now();
-  const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps);
+  const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps, apiKey);
   timing.getQuote = Date.now();
   console.log(`[SQT] ⏱️ 获取报价(Jupiter Quote): ${timing.getQuote - quoteStart}ms`);
 
   // Step 4: 获取 Swap 交易
   const swapStart = Date.now();
-  const swapData = await getSwapTransaction(quote, publicKeyBase58);
+  const swapData = await getSwapTransaction(quote, publicKeyBase58, apiKey);
   timing.getSwap = Date.now();
   console.log(`[SQT] ⏱️ 获取Swap交易(Jupiter Swap): ${timing.getSwap - swapStart}ms`);
 

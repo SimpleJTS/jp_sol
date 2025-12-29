@@ -17190,7 +17190,7 @@ Message: ${transactionMessage}.
       return { mint: tokenMint, symbol: "Unknown", price: null, decimals: 9 };
     }
   }
-  async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLIPPAGE) {
+  async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLIPPAGE, apiKey = null) {
     console.log("[SQT] \u83B7\u53D6\u62A5\u4EF7...", { inputMint, outputMint, amount });
     const params = new URLSearchParams({
       inputMint,
@@ -17199,7 +17199,11 @@ Message: ${transactionMessage}.
       slippageBps: slippageBps.toString()
     });
     const url = `${JUPITER_QUOTE_API}/quote?${params}`;
-    const res = await fetch(url);
+    const headers = {};
+    if (apiKey) {
+      headers["x-api-key"] = apiKey;
+    }
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`\u62A5\u4EF7\u83B7\u53D6\u5931\u8D25: ${res.status} - ${text}`);
@@ -17211,11 +17215,15 @@ Message: ${transactionMessage}.
     console.log("[SQT] \u62A5\u4EF7:", data);
     return data;
   }
-  async function getSwapTransaction(quoteResponse, userPublicKey) {
+  async function getSwapTransaction(quoteResponse, userPublicKey, apiKey = null) {
     console.log("[SQT] \u83B7\u53D6 Swap \u4EA4\u6613...");
+    const headers = { "Content-Type": "application/json" };
+    if (apiKey) {
+      headers["x-api-key"] = apiKey;
+    }
     const res = await fetch(JUPITER_SWAP_API, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         quoteResponse,
         userPublicKey,
@@ -17361,11 +17369,11 @@ Message: ${transactionMessage}.
       timing.prepareAmount = Date.now();
     }
     const quoteStart = Date.now();
-    const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps);
+    const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps, apiKey);
     timing.getQuote = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6\u62A5\u4EF7(Jupiter Quote): ${timing.getQuote - quoteStart}ms`);
     const swapStart = Date.now();
-    const swapData = await getSwapTransaction(quote, publicKeyBase58);
+    const swapData = await getSwapTransaction(quote, publicKeyBase58, apiKey);
     timing.getSwap = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6Swap\u4EA4\u6613(Jupiter Swap): ${timing.getSwap - swapStart}ms`);
     const signStart = Date.now();
