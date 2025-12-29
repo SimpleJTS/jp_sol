@@ -17079,8 +17079,8 @@ Message: ${transactionMessage}.
 
   // src/service-worker.js
   console.log("[SQT] Service Worker \u52A0\u8F7D\u4E2D (Jito Fast Mode)...");
-  var JUPITER_QUOTE_API = "https://quote-api.jup.ag/v6";
-  var JUPITER_SWAP_API = "https://quote-api.jup.ag/v6/swap";
+  var JUPITER_QUOTE_API = "https://api.jup.ag/swap/v1";
+  var JUPITER_SWAP_API = "https://api.jup.ag/swap/v1/swap";
   var JUPITER_BALANCE_API = "https://api.jup.ag/ultra/v1/balances";
   var JITO_BLOCK_ENGINE = "https://mainnet.block-engine.jito.wtf";
   var SOL_MINT = "So11111111111111111111111111111111111111112";

@@ -5,8 +5,8 @@ import bs58 from 'bs58';
 console.log('[SQT] Service Worker 加载中 (Jito Fast Mode)...');
 
 // API 端点
-const JUPITER_QUOTE_API = 'https://quote-api.jup.ag/v6';
-const JUPITER_SWAP_API = 'https://quote-api.jup.ag/v6/swap';
+const JUPITER_QUOTE_API = 'https://api.jup.ag/swap/v1';
+const JUPITER_SWAP_API = 'https://api.jup.ag/swap/v1/swap';
 const JUPITER_BALANCE_API = 'https://api.jup.ag/ultra/v1/balances';
 const JITO_BLOCK_ENGINE = 'https://mainnet.block-engine.jito.wtf';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
