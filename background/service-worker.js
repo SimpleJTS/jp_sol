@@ -14295,6 +14295,91 @@ Missing signature for public key${sigErrors.missing.length === 1 ? "" : "(s)"} [
       return transaction;
     }
   };
+  var TransactionMessage = class _TransactionMessage {
+    constructor(args) {
+      this.payerKey = void 0;
+      this.instructions = void 0;
+      this.recentBlockhash = void 0;
+      this.payerKey = args.payerKey;
+      this.instructions = args.instructions;
+      this.recentBlockhash = args.recentBlockhash;
+    }
+    static decompile(message, args) {
+      const {
+        header,
+        compiledInstructions,
+        recentBlockhash
+      } = message;
+      const {
+        numRequiredSignatures,
+        numReadonlySignedAccounts,
+        numReadonlyUnsignedAccounts
+      } = header;
+      const numWritableSignedAccounts = numRequiredSignatures - numReadonlySignedAccounts;
+      assert2(numWritableSignedAccounts > 0, "Message header is invalid");
+      const numWritableUnsignedAccounts = message.staticAccountKeys.length - numRequiredSignatures - numReadonlyUnsignedAccounts;
+      assert2(numWritableUnsignedAccounts >= 0, "Message header is invalid");
+      const accountKeys = message.getAccountKeys(args);
+      const payerKey = accountKeys.get(0);
+      if (payerKey === void 0) {
+        throw new Error("Failed to decompile message because no account keys were found");
+      }
+      const instructions = [];
+      for (const compiledIx of compiledInstructions) {
+        const keys = [];
+        for (const keyIndex of compiledIx.accountKeyIndexes) {
+          const pubkey = accountKeys.get(keyIndex);
+          if (pubkey === void 0) {
+            throw new Error(`Failed to find key for account key index ${keyIndex}`);
+          }
+          const isSigner = keyIndex < numRequiredSignatures;
+          let isWritable;
+          if (isSigner) {
+            isWritable = keyIndex < numWritableSignedAccounts;
+          } else if (keyIndex < accountKeys.staticAccountKeys.length) {
+            isWritable = keyIndex - numRequiredSignatures < numWritableUnsignedAccounts;
+          } else {
+            isWritable = keyIndex - accountKeys.staticAccountKeys.length < // accountKeysFromLookups cannot be undefined because we already found a pubkey for this index above
+            accountKeys.accountKeysFromLookups.writable.length;
+          }
+          keys.push({
+            pubkey,
+            isSigner: keyIndex < header.numRequiredSignatures,
+            isWritable
+          });
+        }
+        const programId = accountKeys.get(compiledIx.programIdIndex);
+        if (programId === void 0) {
+          throw new Error(`Failed to find program id for program id index ${compiledIx.programIdIndex}`);
+        }
+        instructions.push(new TransactionInstruction({
+          programId,
+          data: toBuffer(compiledIx.data),
+          keys
+        }));
+      }
+      return new _TransactionMessage({
+        payerKey,
+        instructions,
+        recentBlockhash
+      });
+    }
+    compileToLegacyMessage() {
+      return Message.compile({
+        payerKey: this.payerKey,
+        recentBlockhash: this.recentBlockhash,
+        instructions: this.instructions
+      });
+    }
+    compileToV0Message(addressLookupTableAccounts) {
+      return MessageV0.compile({
+        payerKey: this.payerKey,
+        recentBlockhash: this.recentBlockhash,
+        instructions: this.instructions,
+        addressLookupTableAccounts
+      });
+    }
+  };
   var VersionedTransaction = class _VersionedTransaction {
     get version() {
       return this.message.version;
@@ -17249,18 +17334,50 @@ Message: ${transactionMessage}.
     transaction.sign([keypair]);
     return transaction;
   }
-  async function sendJitoBundle(signedTransaction, tipLamports, keypair) {
-    console.log("[SQT] \u901A\u8FC7 Jito \u53D1\u9001 Bundle...");
-    const serializedTx = signedTransaction.serialize();
-    const base58Tx = esm_default2.encode(serializedTx);
+  async function getRecentBlockhash(rpcEndpoint = "https://api.mainnet-beta.solana.com") {
+    const res = await fetch(rpcEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getLatestBlockhash",
+        params: [{ commitment: "processed" }]
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.result.value;
+  }
+  async function createTipTransaction(keypair, tipLamports, rpcEndpoint) {
     const tipAccount = getRandomTipAccount();
     console.log("[SQT] Jito \u5C0F\u8D39\u8D26\u6237:", tipAccount);
     console.log("[SQT] Jito \u5C0F\u8D39\u91D1\u989D:", tipLamports / LAMPORTS_PER_SOL, "SOL");
+    const { blockhash, lastValidBlockHeight } = await getRecentBlockhash(rpcEndpoint);
+    const tipInstruction = SystemProgram.transfer({
+      fromPubkey: keypair.publicKey,
+      toPubkey: new PublicKey(tipAccount),
+      lamports: tipLamports
+    });
+    const messageV0 = new TransactionMessage({
+      payerKey: keypair.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [tipInstruction]
+    }).compileToV0Message();
+    const tipTx = new VersionedTransaction(messageV0);
+    tipTx.sign([keypair]);
+    return tipTx;
+  }
+  async function sendJitoBundle(signedTransaction, tipLamports, keypair, rpcEndpoint) {
+    console.log("[SQT] \u901A\u8FC7 Jito \u53D1\u9001 Bundle...");
+    const tipTx = await createTipTransaction(keypair, tipLamports, rpcEndpoint);
+    const swapTxBase58 = esm_default2.encode(signedTransaction.serialize());
+    const tipTxBase58 = esm_default2.encode(tipTx.serialize());
     const bundleRequest = {
       jsonrpc: "2.0",
       id: 1,
       method: "sendBundle",
-      params: [[base58Tx]]
+      params: [[swapTxBase58, tipTxBase58]]
     };
     const res = await fetch(`${JITO_BLOCK_ENGINE}/api/v1/bundles`, {
       method: "POST",
@@ -17383,20 +17500,21 @@ Message: ${transactionMessage}.
     const sendStart = Date.now();
     let signature2;
     let usedJito = false;
+    const rpcEndpoint = settings.rpcEndpoint || "https://api.mainnet-beta.solana.com";
     try {
-      const bundleId = await sendJitoBundle(signedTx, Math.floor(jitoTip * LAMPORTS_PER_SOL), keypair);
+      const bundleId = await sendJitoBundle(signedTx, Math.floor(jitoTip * LAMPORTS_PER_SOL), keypair, rpcEndpoint);
       console.log("[SQT] Jito Bundle ID:", bundleId);
       usedJito = true;
       signature2 = esm_default2.encode(signedTx.signatures[0]);
     } catch (jitoError) {
       console.log("[SQT] Jito \u5931\u8D25\uFF0C\u4F7F\u7528 RPC \u5907\u7528:", jitoError.message);
-      signature2 = await sendViaRpc(signedTx, settings.rpcEndpoint);
+      signature2 = await sendViaRpc(signedTx, rpcEndpoint);
     }
     timing.sendTransaction = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u53D1\u9001\u4EA4\u6613(${usedJito ? "Jito" : "RPC"}): ${timing.sendTransaction - sendStart}ms`);
     console.log("[SQT] \u4EA4\u6613\u7B7E\u540D:", signature2);
     const confirmStart = Date.now();
-    const confirmed = await confirmTransaction(signature2, settings.rpcEndpoint);
+    const confirmed = await confirmTransaction(signature2, rpcEndpoint);
     timing.confirmTransaction = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u786E\u8BA4\u4EA4\u6613: ${timing.confirmTransaction - confirmStart}ms`);
     timing.end = Date.now();

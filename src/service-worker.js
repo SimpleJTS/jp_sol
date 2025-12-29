@@ -218,25 +218,70 @@ function signTransaction(transactionBase64, keypair) {
   return transaction;
 }
 
-// 通过 Jito 发送 Bundle
-async function sendJitoBundle(signedTransaction, tipLamports, keypair) {
-  console.log('[SQT] 通过 Jito 发送 Bundle...');
+// 获取最新 blockhash
+async function getRecentBlockhash(rpcEndpoint = 'https://api.mainnet-beta.solana.com') {
+  const res = await fetch(rpcEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getLatestBlockhash',
+      params: [{ commitment: 'processed' }]
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result.value;
+}
 
-  // 序列化主交易
-  const serializedTx = signedTransaction.serialize();
-  const base58Tx = bs58.encode(serializedTx);
-
-  // 创建小费交易
+// 创建小费交易
+async function createTipTransaction(keypair, tipLamports, rpcEndpoint) {
   const tipAccount = getRandomTipAccount();
   console.log('[SQT] Jito 小费账户:', tipAccount);
   console.log('[SQT] Jito 小费金额:', tipLamports / LAMPORTS_PER_SOL, 'SOL');
 
-  // Bundle 请求 (只发送主交易，小费通过 prioritization fee 处理)
+  // 获取最新 blockhash
+  const { blockhash, lastValidBlockHeight } = await getRecentBlockhash(rpcEndpoint);
+
+  // 创建转账指令
+  const tipInstruction = SystemProgram.transfer({
+    fromPubkey: keypair.publicKey,
+    toPubkey: new PublicKey(tipAccount),
+    lamports: tipLamports
+  });
+
+  // 创建交易消息
+  const messageV0 = new TransactionMessage({
+    payerKey: keypair.publicKey,
+    recentBlockhash: blockhash,
+    instructions: [tipInstruction]
+  }).compileToV0Message();
+
+  // 创建版本化交易
+  const tipTx = new VersionedTransaction(messageV0);
+  tipTx.sign([keypair]);
+
+  return tipTx;
+}
+
+// 通过 Jito 发送 Bundle
+async function sendJitoBundle(signedTransaction, tipLamports, keypair, rpcEndpoint) {
+  console.log('[SQT] 通过 Jito 发送 Bundle...');
+
+  // 创建小费交易
+  const tipTx = await createTipTransaction(keypair, tipLamports, rpcEndpoint);
+
+  // 序列化两笔交易
+  const swapTxBase58 = bs58.encode(signedTransaction.serialize());
+  const tipTxBase58 = bs58.encode(tipTx.serialize());
+
+  // Bundle 包含: [主交易, 小费交易]
   const bundleRequest = {
     jsonrpc: '2.0',
     id: 1,
     method: 'sendBundle',
-    params: [[base58Tx]]
+    params: [[swapTxBase58, tipTxBase58]]
   };
 
   const res = await fetch(`${JITO_BLOCK_ENGINE}/api/v1/bundles`, {
@@ -399,9 +444,11 @@ async function executeTrade(tradeType, tokenCA, amount) {
   let signature;
   let usedJito = false;
 
+  const rpcEndpoint = settings.rpcEndpoint || 'https://api.mainnet-beta.solana.com';
+
   try {
     // 尝试 Jito Bundle
-    const bundleId = await sendJitoBundle(signedTx, Math.floor(jitoTip * LAMPORTS_PER_SOL), keypair);
+    const bundleId = await sendJitoBundle(signedTx, Math.floor(jitoTip * LAMPORTS_PER_SOL), keypair, rpcEndpoint);
     console.log('[SQT] Jito Bundle ID:', bundleId);
     usedJito = true;
 
@@ -410,7 +457,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
   } catch (jitoError) {
     console.log('[SQT] Jito 失败，使用 RPC 备用:', jitoError.message);
     // 回退到 RPC
-    signature = await sendViaRpc(signedTx, settings.rpcEndpoint);
+    signature = await sendViaRpc(signedTx, rpcEndpoint);
   }
 
   timing.sendTransaction = Date.now();
@@ -419,7 +466,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
 
   // Step 7: 确认交易 (可选，不阻塞)
   const confirmStart = Date.now();
-  const confirmed = await confirmTransaction(signature, settings.rpcEndpoint);
+  const confirmed = await confirmTransaction(signature, rpcEndpoint);
   timing.confirmTransaction = Date.now();
   console.log(`[SQT] ⏱️ 确认交易: ${timing.confirmTransaction - confirmStart}ms`);
 
