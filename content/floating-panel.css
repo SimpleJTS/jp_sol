@@ -21,7 +21,6 @@
   visibility: visible !important;
   opacity: 1 !important;
   pointer-events: auto !important;
-  resize: horizontal !important;
 }
 
 #sqt-floating-panel.minimized {
@@ -379,4 +378,41 @@
 /* 刷新按钮动画 */
 .sqt-header-btn.spinning {
   animation: sqt-spin 1s linear infinite;
+}
+
+/* 调整大小手柄 */
+.sqt-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  background: transparent;
+  border-radius: 0 12px 12px 0;
+  transition: background 0.2s;
+}
+
+.sqt-resize-handle:hover {
+  background: rgba(0, 212, 170, 0.3);
+}
+
+.sqt-resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.sqt-resize-handle:hover::after {
+  background: rgba(0, 212, 170, 0.6);
+}
+
+#sqt-floating-panel.minimized .sqt-resize-handle {
+  display: none;
 }

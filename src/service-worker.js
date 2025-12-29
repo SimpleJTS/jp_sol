@@ -237,13 +237,24 @@ async function executeOrder(signedTransaction, requestId, apiKey) {
   return data;
 }
 
-// 执行交易 (完整流程)
+// 执行交易 (完整流程) - 带时间统计
 async function executeTrade(tradeType, tokenCA, amount) {
+  const timing = { start: Date.now() };
+  console.log('[SQT] ⏱️ 交易开始 ========================');
+
+  // Step 1: 获取设置
   const settings = await getSettings();
+  timing.getSettings = Date.now();
+  console.log(`[SQT] ⏱️ 获取设置: ${timing.getSettings - timing.start}ms`);
+
   if (!settings.privateKey) throw new Error('钱包未配置');
   if (!settings.jupiterApiKey) throw new Error('Jupiter API Key 未配置');
 
+  // Step 2: 创建 Keypair
   const { keypair, publicKeyBase58 } = getKeypair(settings.privateKey);
+  timing.getKeypair = Date.now();
+  console.log(`[SQT] ⏱️ 创建Keypair: ${timing.getKeypair - timing.getSettings}ms`);
+
   const apiKey = settings.jupiterApiKey;
 
   let inputMint, outputMint, tradeAmount;
@@ -252,12 +263,16 @@ async function executeTrade(tradeType, tokenCA, amount) {
     inputMint = SOL_MINT;
     outputMint = tokenCA;
     tradeAmount = Math.floor(amount * LAMPORTS_PER_SOL);
+    timing.prepareAmount = Date.now();
+    console.log(`[SQT] ⏱️ 准备买入金额: ${timing.prepareAmount - timing.getKeypair}ms`);
   } else {
     inputMint = tokenCA;
     outputMint = SOL_MINT;
 
     // 卖出前强制刷新余额
     const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, apiKey, true);
+    timing.getBalance = Date.now();
+    console.log(`[SQT] ⏱️ 获取Token余额: ${timing.getBalance - timing.getKeypair}ms`);
     console.log('[SQT] 代币余额:', tokenBalance);
 
     if (tokenBalance.uiAmount === 0) throw new Error('没有持仓');
@@ -266,6 +281,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
     const rawBalance = BigInt(tokenBalance.raw);
     const sellPercent = BigInt(Math.floor(amount)); // 百分比
     tradeAmount = (rawBalance * sellPercent / 100n).toString();
+    timing.prepareAmount = Date.now();
 
     console.log('[SQT] 卖出计算:', {
       rawBalance: tokenBalance.raw,
@@ -274,24 +290,49 @@ async function executeTrade(tradeType, tokenCA, amount) {
     });
   }
 
-  // 1. 创建订单 (获取报价和未签名交易)
+  // Step 3: 创建订单 (获取报价和未签名交易)
   console.log('[SQT] 创建订单...');
+  const orderStart = Date.now();
   const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58, apiKey);
+  timing.createOrder = Date.now();
+  console.log(`[SQT] ⏱️ 创建订单(Jupiter API): ${timing.createOrder - orderStart}ms`);
 
   if (!order.transaction) {
     throw new Error('未获取到交易数据');
   }
 
-  // 2. 签名交易
+  // Step 4: 签名交易
+  const signStart = Date.now();
   const signedTx = signTransaction(order.transaction, keypair);
+  timing.signTransaction = Date.now();
+  console.log(`[SQT] ⏱️ 签名交易: ${timing.signTransaction - signStart}ms`);
 
-  // 3. 执行交易
+  // Step 5: 执行交易
   console.log('[SQT] 提交交易...');
+  const executeStart = Date.now();
   const result = await executeOrder(signedTx, order.requestId, apiKey);
+  timing.executeOrder = Date.now();
+  console.log(`[SQT] ⏱️ 执行交易(Jupiter Execute): ${timing.executeOrder - executeStart}ms`);
 
   if (result.status === 'Failed') {
     throw new Error(result.error || '交易失败');
   }
+
+  // 总耗时统计
+  timing.end = Date.now();
+  const totalTime = timing.end - timing.start;
+  console.log('[SQT] ⏱️ ========================');
+  console.log(`[SQT] ⏱️ 总耗时: ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
+  console.log('[SQT] ⏱️ 耗时分布:');
+  console.log(`[SQT]    - 获取设置: ${timing.getSettings - timing.start}ms`);
+  console.log(`[SQT]    - 创建Keypair: ${timing.getKeypair - timing.getSettings}ms`);
+  if (timing.getBalance) {
+    console.log(`[SQT]    - 获取余额: ${timing.getBalance - timing.getKeypair}ms`);
+  }
+  console.log(`[SQT]    - 创建订单: ${timing.createOrder - (timing.prepareAmount || timing.getKeypair)}ms`);
+  console.log(`[SQT]    - 签名交易: ${timing.signTransaction - timing.createOrder}ms`);
+  console.log(`[SQT]    - 执行交易: ${timing.executeOrder - timing.signTransaction}ms`);
+  console.log('[SQT] ⏱️ ========================');
 
   console.log('[SQT] 交易成功:', result.signature);
   return result.signature;
