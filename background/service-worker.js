@@ -17246,25 +17246,36 @@ Message: ${transactionMessage}.
     return data;
   }
   async function executeTrade(tradeType, tokenCA, amount) {
+    const timing = { start: Date.now() };
+    console.log("[SQT] \u23F1\uFE0F \u4EA4\u6613\u5F00\u59CB ========================");
     const settings = await getSettings();
+    timing.getSettings = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6\u8BBE\u7F6E: ${timing.getSettings - timing.start}ms`);
     if (!settings.privateKey) throw new Error("\u94B1\u5305\u672A\u914D\u7F6E");
     if (!settings.jupiterApiKey) throw new Error("Jupiter API Key \u672A\u914D\u7F6E");
     const { keypair, publicKeyBase58 } = getKeypair(settings.privateKey);
+    timing.getKeypair = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u521B\u5EFAKeypair: ${timing.getKeypair - timing.getSettings}ms`);
     const apiKey = settings.jupiterApiKey;
     let inputMint, outputMint, tradeAmount;
     if (tradeType === "buy") {
       inputMint = SOL_MINT;
       outputMint = tokenCA;
       tradeAmount = Math.floor(amount * LAMPORTS_PER_SOL);
+      timing.prepareAmount = Date.now();
+      console.log(`[SQT] \u23F1\uFE0F \u51C6\u5907\u4E70\u5165\u91D1\u989D: ${timing.prepareAmount - timing.getKeypair}ms`);
     } else {
       inputMint = tokenCA;
       outputMint = SOL_MINT;
       const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, apiKey, true);
+      timing.getBalance = Date.now();
+      console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6Token\u4F59\u989D: ${timing.getBalance - timing.getKeypair}ms`);
       console.log("[SQT] \u4EE3\u5E01\u4F59\u989D:", tokenBalance);
       if (tokenBalance.uiAmount === 0) throw new Error("\u6CA1\u6709\u6301\u4ED3");
       const rawBalance = BigInt(tokenBalance.raw);
       const sellPercent = BigInt(Math.floor(amount));
       tradeAmount = (rawBalance * sellPercent / 100n).toString();
+      timing.prepareAmount = Date.now();
       console.log("[SQT] \u5356\u51FA\u8BA1\u7B97:", {
         rawBalance: tokenBalance.raw,
         percent: amount,
@@ -17272,16 +17283,39 @@ Message: ${transactionMessage}.
       });
     }
     console.log("[SQT] \u521B\u5EFA\u8BA2\u5355...");
+    const orderStart = Date.now();
     const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58, apiKey);
+    timing.createOrder = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u521B\u5EFA\u8BA2\u5355(Jupiter API): ${timing.createOrder - orderStart}ms`);
     if (!order.transaction) {
       throw new Error("\u672A\u83B7\u53D6\u5230\u4EA4\u6613\u6570\u636E");
     }
+    const signStart = Date.now();
     const signedTx = signTransaction(order.transaction, keypair);
+    timing.signTransaction = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - signStart}ms`);
     console.log("[SQT] \u63D0\u4EA4\u4EA4\u6613...");
+    const executeStart = Date.now();
     const result = await executeOrder(signedTx, order.requestId, apiKey);
+    timing.executeOrder = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u6267\u884C\u4EA4\u6613(Jupiter Execute): ${timing.executeOrder - executeStart}ms`);
     if (result.status === "Failed") {
       throw new Error(result.error || "\u4EA4\u6613\u5931\u8D25");
     }
+    timing.end = Date.now();
+    const totalTime = timing.end - timing.start;
+    console.log("[SQT] \u23F1\uFE0F ========================");
+    console.log(`[SQT] \u23F1\uFE0F \u603B\u8017\u65F6: ${totalTime}ms (${(totalTime / 1e3).toFixed(2)}s)`);
+    console.log("[SQT] \u23F1\uFE0F \u8017\u65F6\u5206\u5E03:");
+    console.log(`[SQT]    - \u83B7\u53D6\u8BBE\u7F6E: ${timing.getSettings - timing.start}ms`);
+    console.log(`[SQT]    - \u521B\u5EFAKeypair: ${timing.getKeypair - timing.getSettings}ms`);
+    if (timing.getBalance) {
+      console.log(`[SQT]    - \u83B7\u53D6\u4F59\u989D: ${timing.getBalance - timing.getKeypair}ms`);
+    }
+    console.log(`[SQT]    - \u521B\u5EFA\u8BA2\u5355: ${timing.createOrder - (timing.prepareAmount || timing.getKeypair)}ms`);
+    console.log(`[SQT]    - \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - timing.createOrder}ms`);
+    console.log(`[SQT]    - \u6267\u884C\u4EA4\u6613: ${timing.executeOrder - timing.signTransaction}ms`);
+    console.log("[SQT] \u23F1\uFE0F ========================");
     console.log("[SQT] \u4EA4\u6613\u6210\u529F:", result.signature);
     return result.signature;
   }

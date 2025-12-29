@@ -11,6 +11,7 @@
   let panelState = {
     isMinimized: false,
     position: { x: null, y: null },
+    width: 260,  // 默认宽度
     currentCA: '',
     solBalance: 0,
     tokenBalance: 0,
@@ -90,6 +91,8 @@
           <button class="sqt-open-settings" id="sqt-open-settings">打开设置</button>
         </div>
       </div>
+      <!-- 调整大小手柄 -->
+      <div class="sqt-resize-handle" id="sqt-resize-handle"></div>
     `;
 
     document.body.appendChild(panel);
@@ -145,6 +148,69 @@
         panel.style.transition = 'all 0.3s ease';
         // 保存位置
         savePosition();
+      }
+    });
+  }
+
+  // 初始化调整大小
+  function initResize(panel) {
+    const handle = panel.querySelector('#sqt-resize-handle');
+    let isResizing = false;
+    let startX, startWidth;
+
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = panel.offsetWidth;
+      panel.style.transition = 'none';
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      e.preventDefault();
+
+      const deltaX = e.clientX - startX;
+      let newWidth = startWidth + deltaX;
+
+      // 限制宽度范围
+      newWidth = Math.max(200, Math.min(400, newWidth));
+
+      panel.style.width = newWidth + 'px';
+      panelState.width = newWidth;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        panel.style.transition = 'box-shadow 0.3s ease';
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        // 保存宽度
+        savePanelSize();
+      }
+    });
+  }
+
+  // 保存面板大小
+  function savePanelSize() {
+    chrome.storage.local.get('solanaQuickTrade', (result) => {
+      const settings = result.solanaQuickTrade || {};
+      settings.panelWidth = panelState.width;
+      chrome.storage.local.set({ solanaQuickTrade: settings });
+    });
+  }
+
+  // 加载面板大小
+  function loadPanelSize(panel) {
+    chrome.storage.local.get('solanaQuickTrade', (result) => {
+      const settings = result.solanaQuickTrade || {};
+      if (settings.panelWidth) {
+        panel.style.width = settings.panelWidth + 'px';
+        panelState.width = settings.panelWidth;
       }
     });
   }
@@ -511,8 +577,10 @@
       // 重新创建面板
       const panel = createPanel();
       initDrag(panel);
+      initResize(panel);
       initEvents(panel);
       loadPosition(panel);
+      loadPanelSize(panel);
       checkWalletConfig();
       setTimeout(autoFillCA, 500);
     }
@@ -536,8 +604,10 @@
   function init() {
     const panel = createPanel();
     initDrag(panel);
+    initResize(panel);
     initEvents(panel);
     loadPosition(panel);
+    loadPanelSize(panel);
     checkWalletConfig();
 
     // 自动检测 CA (延迟执行，等待页面加载)
