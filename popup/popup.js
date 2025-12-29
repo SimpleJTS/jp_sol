@@ -9,6 +9,7 @@ const customRpcInput = document.getElementById('customRpc');
 const slippageBtns = document.querySelectorAll('.slip-btn');
 const customSlippage = document.getElementById('customSlippage');
 const priorityFeeSelect = document.getElementById('priorityFee');
+const jitoTipSelect = document.getElementById('jitoTip');
 const buyAmountInputs = [
   document.getElementById('buyAmount1'),
   document.getElementById('buyAmount2'),
@@ -108,6 +109,7 @@ saveBtn.addEventListener('click', async () => {
     rpcEndpoint: rpcEndpoint,
     slippage: currentSlippage,
     priorityFee: parseFloat(priorityFeeSelect.value),
+    jitoTip: parseFloat(jitoTipSelect.value),
     buyAmounts: buyAmounts,
     showPanel: showPanelToggle.checked,
     updatedAt: Date.now()
@@ -196,6 +198,10 @@ async function loadSettings() {
 
       if (settings.priorityFee) {
         priorityFeeSelect.value = settings.priorityFee.toString();
+      }
+
+      if (settings.jitoTip) {
+        jitoTipSelect.value = settings.jitoTip.toString();
       }
 
       showPanelToggle.checked = settings.showPanel !== false;

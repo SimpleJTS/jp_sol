@@ -17078,11 +17078,25 @@ Message: ${transactionMessage}.
   var esm_default2 = esm_default(ALPHABET);
 
   // src/service-worker.js
-  console.log("[SQT] Service Worker \u52A0\u8F7D\u4E2D...");
-  var JUPITER_ULTRA_API = "https://api.jup.ag/ultra/v1";
+  console.log("[SQT] Service Worker \u52A0\u8F7D\u4E2D (Jito Fast Mode)...");
+  var JUPITER_QUOTE_API = "https://quote-api.jup.ag/v6";
+  var JUPITER_SWAP_API = "https://quote-api.jup.ag/v6/swap";
   var JUPITER_BALANCE_API = "https://api.jup.ag/ultra/v1/balances";
+  var JITO_BLOCK_ENGINE = "https://mainnet.block-engine.jito.wtf";
   var SOL_MINT = "So11111111111111111111111111111111111111112";
   var LAMPORTS_PER_SOL = 1e9;
+  var JITO_TIP_ACCOUNTS = [
+    "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5",
+    "HFqU5x63VTqvQss8hp11i4bVmkdzGTT4J4Kj1gfCmJY8",
+    "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY",
+    "ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49",
+    "DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh",
+    "ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt",
+    "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL",
+    "3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"
+  ];
+  var DEFAULT_JITO_TIP = 1e-3;
+  var DEFAULT_SLIPPAGE = 100;
   function getKeypair(privateKeyBase58) {
     const secretKey = esm_default2.decode(privateKeyBase58);
     let keypair;
@@ -17104,6 +17118,10 @@ Message: ${transactionMessage}.
     const result = await chrome.storage.local.get("solanaQuickTrade");
     return result.solanaQuickTrade || {};
   }
+  function getRandomTipAccount() {
+    const index = Math.floor(Math.random() * JITO_TIP_ACCOUNTS.length);
+    return JITO_TIP_ACCOUNTS[index];
+  }
   var balanceCache = {
     data: null,
     timestamp: 0,
@@ -17113,10 +17131,8 @@ Message: ${transactionMessage}.
   async function getBalancesFromJupiter(publicKey2, apiKey) {
     const now = Date.now();
     if (balanceCache.address === publicKey2 && balanceCache.data && now - balanceCache.timestamp < CACHE_TTL) {
-      console.log("[SQT] \u4F7F\u7528\u7F13\u5B58\u4F59\u989D");
       return balanceCache.data;
     }
-    console.log("[SQT] Jupiter Ultra API \u83B7\u53D6\u4F59\u989D...");
     const headers = {};
     if (apiKey) {
       headers["x-api-key"] = apiKey;
@@ -17129,22 +17145,13 @@ Message: ${transactionMessage}.
     if (data.error) {
       throw new Error(data.error);
     }
-    balanceCache = {
-      data,
-      timestamp: now,
-      address: publicKey2
-    };
-    console.log("[SQT] Jupiter \u4F59\u989D:", data);
+    balanceCache = { data, timestamp: now, address: publicKey2 };
     return data;
   }
   async function getSolBalance(publicKey2, apiKey) {
     const balances = await getBalancesFromJupiter(publicKey2, apiKey);
-    if (balances.SOL) {
-      return balances.SOL.uiAmount || 0;
-    }
-    if (balances[SOL_MINT]) {
-      return balances[SOL_MINT].uiAmount || 0;
-    }
+    if (balances.SOL) return balances.SOL.uiAmount || 0;
+    if (balances[SOL_MINT]) return balances[SOL_MINT].uiAmount || 0;
     return 0;
   }
   async function getTokenBalance(publicKey2, tokenMint, apiKey, forceRefresh = false) {
@@ -17183,125 +17190,207 @@ Message: ${transactionMessage}.
       return { mint: tokenMint, symbol: "Unknown", price: null, decimals: 9 };
     }
   }
-  async function createOrder(inputMint, outputMint, amount, taker, apiKey) {
-    console.log("[SQT] \u83B7\u53D6\u8BA2\u5355...", { inputMint, outputMint, amount });
+  async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLIPPAGE) {
+    console.log("[SQT] \u83B7\u53D6\u62A5\u4EF7...", { inputMint, outputMint, amount });
     const params = new URLSearchParams({
       inputMint,
       outputMint,
       amount: amount.toString(),
-      taker
+      slippageBps: slippageBps.toString()
     });
-    const url = `${JUPITER_ULTRA_API}/order?${params}`;
-    console.log("[SQT] \u8BF7\u6C42 URL:", url);
-    const headers = {};
-    if (apiKey) {
-      headers["x-api-key"] = apiKey;
-    }
-    const res = await fetch(url, { headers });
+    const url = `${JUPITER_QUOTE_API}/quote?${params}`;
+    const res = await fetch(url);
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`\u8BA2\u5355\u83B7\u53D6\u5931\u8D25: ${res.status} - ${text}`);
+      throw new Error(`\u62A5\u4EF7\u83B7\u53D6\u5931\u8D25: ${res.status} - ${text}`);
     }
     const data = await res.json();
-    console.log("[SQT] \u8BA2\u5355\u54CD\u5E94:", data);
     if (data.error) {
       throw new Error(data.error);
     }
+    console.log("[SQT] \u62A5\u4EF7:", data);
     return data;
   }
-  function signTransaction(transactionBase64, keypair) {
-    console.log("[SQT] \u7B7E\u540D\u4EA4\u6613...");
-    const txBuffer = Uint8Array.from(atob(transactionBase64), (c) => c.charCodeAt(0));
-    console.log("[SQT] \u4EA4\u6613\u5B57\u8282\u957F\u5EA6:", txBuffer.length);
-    const transaction = VersionedTransaction.deserialize(txBuffer);
-    console.log("[SQT] \u4EA4\u6613\u53CD\u5E8F\u5217\u5316\u6210\u529F");
-    transaction.sign([keypair]);
-    console.log("[SQT] \u4EA4\u6613\u7B7E\u540D\u6210\u529F");
-    const signedTxBytes = transaction.serialize();
-    return btoa(String.fromCharCode(...signedTxBytes));
-  }
-  async function executeOrder(signedTransaction, requestId, apiKey) {
-    console.log("[SQT] \u6267\u884C\u4EA4\u6613...", requestId);
-    const headers = { "Content-Type": "application/json" };
-    if (apiKey) {
-      headers["x-api-key"] = apiKey;
-    }
-    const res = await fetch(`${JUPITER_ULTRA_API}/execute`, {
+  async function getSwapTransaction(quoteResponse, userPublicKey) {
+    console.log("[SQT] \u83B7\u53D6 Swap \u4EA4\u6613...");
+    const res = await fetch(JUPITER_SWAP_API, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        signedTransaction,
-        requestId
+        quoteResponse,
+        userPublicKey,
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: "auto"
       })
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`\u4EA4\u6613\u6267\u884C\u5931\u8D25: ${res.status} - ${text}`);
+      throw new Error(`Swap \u4EA4\u6613\u83B7\u53D6\u5931\u8D25: ${res.status} - ${text}`);
     }
     const data = await res.json();
-    console.log("[SQT] \u6267\u884C\u7ED3\u679C:", data);
     if (data.error) {
       throw new Error(data.error);
     }
+    console.log("[SQT] Swap \u4EA4\u6613\u83B7\u53D6\u6210\u529F");
     return data;
+  }
+  function signTransaction(transactionBase64, keypair) {
+    const txBuffer = Uint8Array.from(atob(transactionBase64), (c) => c.charCodeAt(0));
+    const transaction = VersionedTransaction.deserialize(txBuffer);
+    transaction.sign([keypair]);
+    return transaction;
+  }
+  async function sendJitoBundle(signedTransaction, tipLamports, keypair) {
+    console.log("[SQT] \u901A\u8FC7 Jito \u53D1\u9001 Bundle...");
+    const serializedTx = signedTransaction.serialize();
+    const base58Tx = esm_default2.encode(serializedTx);
+    const tipAccount = getRandomTipAccount();
+    console.log("[SQT] Jito \u5C0F\u8D39\u8D26\u6237:", tipAccount);
+    console.log("[SQT] Jito \u5C0F\u8D39\u91D1\u989D:", tipLamports / LAMPORTS_PER_SOL, "SOL");
+    const bundleRequest = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "sendBundle",
+      params: [[base58Tx]]
+    };
+    const res = await fetch(`${JITO_BLOCK_ENGINE}/api/v1/bundles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bundleRequest)
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Jito Bundle \u53D1\u9001\u5931\u8D25: ${res.status} - ${text}`);
+    }
+    const data = await res.json();
+    console.log("[SQT] Jito \u54CD\u5E94:", data);
+    if (data.error) {
+      throw new Error(data.error.message || "Jito Bundle \u5931\u8D25");
+    }
+    return data.result;
+  }
+  async function sendViaRpc(signedTransaction, rpcEndpoint = "https://api.mainnet-beta.solana.com") {
+    console.log("[SQT] \u901A\u8FC7 RPC \u53D1\u9001\u4EA4\u6613...");
+    const serializedTx = signedTransaction.serialize();
+    const base64Tx = btoa(String.fromCharCode(...serializedTx));
+    const res = await fetch(rpcEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "sendTransaction",
+        params: [base64Tx, {
+          skipPreflight: true,
+          preflightCommitment: "processed",
+          encoding: "base64",
+          maxRetries: 3
+        }]
+      })
+    });
+    const data = await res.json();
+    if (data.error) {
+      throw new Error(data.error.message || "RPC \u53D1\u9001\u5931\u8D25");
+    }
+    return data.result;
+  }
+  async function confirmTransaction(signature2, rpcEndpoint = "https://api.mainnet-beta.solana.com", timeout = 3e4) {
+    console.log("[SQT] \u786E\u8BA4\u4EA4\u6613:", signature2);
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      try {
+        const res = await fetch(rpcEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getSignatureStatuses",
+            params: [[signature2], { searchTransactionHistory: true }]
+          })
+        });
+        const data = await res.json();
+        const status = data.result?.value?.[0];
+        if (status) {
+          if (status.err) {
+            throw new Error("\u4EA4\u6613\u5931\u8D25: " + JSON.stringify(status.err));
+          }
+          if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") {
+            console.log("[SQT] \u4EA4\u6613\u5DF2\u786E\u8BA4:", status.confirmationStatus);
+            return true;
+          }
+        }
+      } catch (e) {
+        console.log("[SQT] \u786E\u8BA4\u68C0\u67E5\u9519\u8BEF:", e.message);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    console.log("[SQT] \u4EA4\u6613\u786E\u8BA4\u8D85\u65F6\uFF0C\u4F46\u53EF\u80FD\u5DF2\u6210\u529F");
+    return false;
   }
   async function executeTrade(tradeType, tokenCA, amount) {
     const timing = { start: Date.now() };
-    console.log("[SQT] \u23F1\uFE0F \u4EA4\u6613\u5F00\u59CB ========================");
+    console.log("[SQT] \u23F1\uFE0F \u4EA4\u6613\u5F00\u59CB (Jito Fast Mode) ========================");
     const settings = await getSettings();
     timing.getSettings = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6\u8BBE\u7F6E: ${timing.getSettings - timing.start}ms`);
     if (!settings.privateKey) throw new Error("\u94B1\u5305\u672A\u914D\u7F6E");
-    if (!settings.jupiterApiKey) throw new Error("Jupiter API Key \u672A\u914D\u7F6E");
     const { keypair, publicKeyBase58 } = getKeypair(settings.privateKey);
     timing.getKeypair = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u521B\u5EFAKeypair: ${timing.getKeypair - timing.getSettings}ms`);
     const apiKey = settings.jupiterApiKey;
+    const jitoTip = settings.jitoTip || DEFAULT_JITO_TIP;
+    const slippageBps = (settings.slippage || 1) * 100;
     let inputMint, outputMint, tradeAmount;
     if (tradeType === "buy") {
       inputMint = SOL_MINT;
       outputMint = tokenCA;
       tradeAmount = Math.floor(amount * LAMPORTS_PER_SOL);
       timing.prepareAmount = Date.now();
-      console.log(`[SQT] \u23F1\uFE0F \u51C6\u5907\u4E70\u5165\u91D1\u989D: ${timing.prepareAmount - timing.getKeypair}ms`);
     } else {
       inputMint = tokenCA;
       outputMint = SOL_MINT;
       const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, apiKey, true);
       timing.getBalance = Date.now();
       console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6Token\u4F59\u989D: ${timing.getBalance - timing.getKeypair}ms`);
-      console.log("[SQT] \u4EE3\u5E01\u4F59\u989D:", tokenBalance);
       if (tokenBalance.uiAmount === 0) throw new Error("\u6CA1\u6709\u6301\u4ED3");
       const rawBalance = BigInt(tokenBalance.raw);
       const sellPercent = BigInt(Math.floor(amount));
       tradeAmount = (rawBalance * sellPercent / 100n).toString();
       timing.prepareAmount = Date.now();
-      console.log("[SQT] \u5356\u51FA\u8BA1\u7B97:", {
-        rawBalance: tokenBalance.raw,
-        percent: amount,
-        tradeAmount
-      });
     }
-    console.log("[SQT] \u521B\u5EFA\u8BA2\u5355...");
-    const orderStart = Date.now();
-    const order = await createOrder(inputMint, outputMint, tradeAmount, publicKeyBase58, apiKey);
-    timing.createOrder = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u521B\u5EFA\u8BA2\u5355(Jupiter API): ${timing.createOrder - orderStart}ms`);
-    if (!order.transaction) {
-      throw new Error("\u672A\u83B7\u53D6\u5230\u4EA4\u6613\u6570\u636E");
-    }
+    const quoteStart = Date.now();
+    const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps);
+    timing.getQuote = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6\u62A5\u4EF7(Jupiter Quote): ${timing.getQuote - quoteStart}ms`);
+    const swapStart = Date.now();
+    const swapData = await getSwapTransaction(quote, publicKeyBase58);
+    timing.getSwap = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6Swap\u4EA4\u6613(Jupiter Swap): ${timing.getSwap - swapStart}ms`);
     const signStart = Date.now();
-    const signedTx = signTransaction(order.transaction, keypair);
+    const signedTx = signTransaction(swapData.swapTransaction, keypair);
     timing.signTransaction = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - signStart}ms`);
-    console.log("[SQT] \u63D0\u4EA4\u4EA4\u6613...");
-    const executeStart = Date.now();
-    const result = await executeOrder(signedTx, order.requestId, apiKey);
-    timing.executeOrder = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u6267\u884C\u4EA4\u6613(Jupiter Execute): ${timing.executeOrder - executeStart}ms`);
-    if (result.status === "Failed") {
-      throw new Error(result.error || "\u4EA4\u6613\u5931\u8D25");
+    const sendStart = Date.now();
+    let signature2;
+    let usedJito = false;
+    try {
+      const bundleId = await sendJitoBundle(signedTx, Math.floor(jitoTip * LAMPORTS_PER_SOL), keypair);
+      console.log("[SQT] Jito Bundle ID:", bundleId);
+      usedJito = true;
+      signature2 = esm_default2.encode(signedTx.signatures[0]);
+    } catch (jitoError) {
+      console.log("[SQT] Jito \u5931\u8D25\uFF0C\u4F7F\u7528 RPC \u5907\u7528:", jitoError.message);
+      signature2 = await sendViaRpc(signedTx, settings.rpcEndpoint);
     }
+    timing.sendTransaction = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u53D1\u9001\u4EA4\u6613(${usedJito ? "Jito" : "RPC"}): ${timing.sendTransaction - sendStart}ms`);
+    console.log("[SQT] \u4EA4\u6613\u7B7E\u540D:", signature2);
+    const confirmStart = Date.now();
+    const confirmed = await confirmTransaction(signature2, settings.rpcEndpoint);
+    timing.confirmTransaction = Date.now();
+    console.log(`[SQT] \u23F1\uFE0F \u786E\u8BA4\u4EA4\u6613: ${timing.confirmTransaction - confirmStart}ms`);
     timing.end = Date.now();
     const totalTime = timing.end - timing.start;
     console.log("[SQT] \u23F1\uFE0F ========================");
@@ -17312,12 +17401,14 @@ Message: ${transactionMessage}.
     if (timing.getBalance) {
       console.log(`[SQT]    - \u83B7\u53D6\u4F59\u989D: ${timing.getBalance - timing.getKeypair}ms`);
     }
-    console.log(`[SQT]    - \u521B\u5EFA\u8BA2\u5355: ${timing.createOrder - (timing.prepareAmount || timing.getKeypair)}ms`);
-    console.log(`[SQT]    - \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - timing.createOrder}ms`);
-    console.log(`[SQT]    - \u6267\u884C\u4EA4\u6613: ${timing.executeOrder - timing.signTransaction}ms`);
+    console.log(`[SQT]    - \u83B7\u53D6\u62A5\u4EF7: ${timing.getQuote - (timing.prepareAmount || timing.getKeypair)}ms`);
+    console.log(`[SQT]    - \u83B7\u53D6Swap: ${timing.getSwap - timing.getQuote}ms`);
+    console.log(`[SQT]    - \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - timing.getSwap}ms`);
+    console.log(`[SQT]    - \u53D1\u9001\u4EA4\u6613: ${timing.sendTransaction - timing.signTransaction}ms`);
+    console.log(`[SQT]    - \u786E\u8BA4\u4EA4\u6613: ${timing.confirmTransaction - timing.sendTransaction}ms`);
+    console.log(`[SQT] \u23F1\uFE0F \u53D1\u9001\u65B9\u5F0F: ${usedJito ? "Jito Bundle" : "RPC"}`);
     console.log("[SQT] \u23F1\uFE0F ========================");
-    console.log("[SQT] \u4EA4\u6613\u6210\u529F:", result.signature);
-    return result.signature;
+    return signature2;
   }
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("[SQT] \u6536\u5230\u6D88\u606F:", message.type);
@@ -17376,7 +17467,7 @@ Message: ${transactionMessage}.
         throw new Error("Unknown message type");
     }
   }
-  console.log("[SQT] Solana Quick Trade \u5DF2\u52A0\u8F7D");
+  console.log("[SQT] Solana Quick Trade (Jito Fast Mode) \u5DF2\u52A0\u8F7D");
 })();
 /*! Bundled license information:
 
