@@ -31,10 +31,11 @@
     <div class="section">
       <label>RPC 节点</label>
       <select id="rpcEndpoint">
-        <option value="https://api.mainnet-beta.solana.com">Solana 官方 (免费)</option>
-        <option value="https://mainnet.helius-rpc.com/?api-key=">Helius (需API Key)</option>
+        <option value="https://api.mainnet-beta.solana.com">Solana 官方 (免费/限流)</option>
+        <option value="helius">Helius (推荐)</option>
         <option value="custom">自定义</option>
       </select>
+      <input type="text" id="heliusApiKey" placeholder="Helius API Key" style="display:none; margin-top:8px;">
       <input type="text" id="customRpc" placeholder="自定义 RPC URL" style="display:none; margin-top:8px;">
     </div>
 

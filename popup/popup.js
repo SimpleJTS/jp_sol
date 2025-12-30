@@ -5,6 +5,7 @@ const privateKeyInput = document.getElementById('privateKey');
 const toggleKeyBtn = document.getElementById('toggleKey');
 const jupiterApiKeyInput = document.getElementById('jupiterApiKey');
 const rpcSelect = document.getElementById('rpcEndpoint');
+const heliusApiKeyInput = document.getElementById('heliusApiKey');
 const customRpcInput = document.getElementById('customRpc');
 const slippageBtns = document.querySelectorAll('.slip-btn');
 const customSlippage = document.getElementById('customSlippage');
@@ -43,10 +44,13 @@ toggleKeyBtn.addEventListener('click', () => {
 
 // RPC 选择
 rpcSelect.addEventListener('change', () => {
-  if (rpcSelect.value === 'custom') {
+  heliusApiKeyInput.style.display = 'none';
+  customRpcInput.style.display = 'none';
+
+  if (rpcSelect.value === 'helius') {
+    heliusApiKeyInput.style.display = 'block';
+  } else if (rpcSelect.value === 'custom') {
     customRpcInput.style.display = 'block';
-  } else {
-    customRpcInput.style.display = 'none';
   }
 });
 
@@ -89,7 +93,16 @@ saveBtn.addEventListener('click', async () => {
   }
 
   let rpcEndpoint = rpcSelect.value;
-  if (rpcEndpoint === 'custom') {
+  let heliusApiKey = '';
+
+  if (rpcEndpoint === 'helius') {
+    heliusApiKey = heliusApiKeyInput.value.trim();
+    if (!heliusApiKey) {
+      showStatus('请输入 Helius API Key', 'error');
+      return;
+    }
+    rpcEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+  } else if (rpcEndpoint === 'custom') {
     rpcEndpoint = customRpcInput.value.trim();
     if (!rpcEndpoint) {
       showStatus('请输入自定义 RPC 地址', 'error');
@@ -107,6 +120,7 @@ saveBtn.addEventListener('click', async () => {
     privateKey: privateKey,
     jupiterApiKey: jupiterApiKey,
     rpcEndpoint: rpcEndpoint,
+    heliusApiKey: heliusApiKey,
     slippage: currentSlippage,
     priorityFee: parseFloat(priorityFeeSelect.value),
     jitoTip: parseFloat(jitoTipSelect.value),
@@ -140,7 +154,14 @@ testBtn.addEventListener('click', async () => {
   const privateKey = privateKeyInput.value.trim();
   let rpcEndpoint = rpcSelect.value;
 
-  if (rpcEndpoint === 'custom') {
+  if (rpcEndpoint === 'helius') {
+    const heliusKey = heliusApiKeyInput.value.trim();
+    if (!heliusKey) {
+      showStatus('请输入 Helius API Key', 'error');
+      return;
+    }
+    rpcEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
+  } else if (rpcEndpoint === 'custom') {
     rpcEndpoint = customRpcInput.value.trim();
   }
 
@@ -174,17 +195,23 @@ async function loadSettings() {
       privateKeyInput.value = settings.privateKey || '';
       jupiterApiKeyInput.value = settings.jupiterApiKey || '';
 
-      if (settings.rpcEndpoint && !settings.rpcEndpoint.includes('mainnet-beta') && !settings.rpcEndpoint.includes('helius')) {
+      // 恢复 RPC 设置
+      if (settings.heliusApiKey) {
+        rpcSelect.value = 'helius';
+        heliusApiKeyInput.value = settings.heliusApiKey;
+        heliusApiKeyInput.style.display = 'block';
+      } else if (settings.rpcEndpoint && settings.rpcEndpoint.includes('helius')) {
+        rpcSelect.value = 'helius';
+        // 尝试提取 API key
+        const match = settings.rpcEndpoint.match(/api-key=([^&]+)/);
+        if (match) {
+          heliusApiKeyInput.value = match[1];
+          heliusApiKeyInput.style.display = 'block';
+        }
+      } else if (settings.rpcEndpoint && !settings.rpcEndpoint.includes('mainnet-beta')) {
         rpcSelect.value = 'custom';
         customRpcInput.value = settings.rpcEndpoint;
         customRpcInput.style.display = 'block';
-      } else if (settings.rpcEndpoint) {
-        // 尝试匹配已有选项
-        const options = Array.from(rpcSelect.options);
-        const match = options.find(opt => settings.rpcEndpoint.includes(opt.value.split('?')[0]));
-        if (match) {
-          rpcSelect.value = match.value;
-        }
       }
 
       currentSlippage = settings.slippage || 1;
