@@ -270,14 +270,10 @@ async function getRecentBlockhash(rpcEndpoint = 'https://api.mainnet-beta.solana
   return data.result.value;
 }
 
-// 创建小费交易
-async function createTipTransaction(keypair, tipLamports, rpcEndpoint) {
+// 创建小费交易 (使用预取的 blockhash)
+function createTipTransactionSync(keypair, tipLamports, blockhash) {
   const tipAccount = getRandomTipAccount();
   console.log('[SQT] Jito 小费账户:', tipAccount);
-  console.log('[SQT] Jito 小费金额:', tipLamports / LAMPORTS_PER_SOL, 'SOL');
-
-  // 获取最新 blockhash
-  const { blockhash, lastValidBlockHeight } = await getRecentBlockhash(rpcEndpoint);
 
   // 创建转账指令
   const tipInstruction = SystemProgram.transfer({
@@ -300,12 +296,12 @@ async function createTipTransaction(keypair, tipLamports, rpcEndpoint) {
   return tipTx;
 }
 
-// 通过 Jito 发送 Bundle (多节点轮询)
-async function sendJitoBundle(signedTransaction, tipLamports, keypair, rpcEndpoint) {
-  console.log('[SQT] 通过 Jito 发送 Bundle...');
+// 通过 Jito 发送 Bundle (多节点并行)
+async function sendJitoBundle(signedTransaction, tipLamports, keypair, blockhash) {
+  console.log('[SQT] 通过 Jito 发送 Bundle (并行模式)...');
 
-  // 创建小费交易
-  const tipTx = await createTipTransaction(keypair, tipLamports, rpcEndpoint);
+  // 使用预取的 blockhash 创建小费交易
+  const tipTx = createTipTransactionSync(keypair, tipLamports, blockhash);
 
   // 序列化两笔交易
   const swapTxBase58 = bs58.encode(signedTransaction.serialize());
@@ -319,47 +315,47 @@ async function sendJitoBundle(signedTransaction, tipLamports, keypair, rpcEndpoi
     params: [[swapTxBase58, tipTxBase58]]
   };
 
-  // 尝试多个 Jito 节点
-  let lastError = null;
-  for (let i = 0; i < JITO_ENDPOINTS.length; i++) {
-    const endpoint = getNextJitoEndpoint();
-    console.log(`[SQT] 尝试 Jito 节点: ${endpoint}`);
+  // 并行发送到所有 Jito 节点，谁先成功用谁
+  const sendToEndpoint = async (endpoint) => {
+    const res = await fetch(`${endpoint}/api/v1/bundles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bundleRequest)
+    });
 
-    try {
-      const res = await fetch(`${endpoint}/api/v1/bundles`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bundleRequest)
-      });
+    if (res.status === 429) {
+      throw new Error('Rate limited');
+    }
 
-      if (res.status === 429) {
-        console.log(`[SQT] 节点 ${endpoint} 限流，尝试下一个...`);
-        lastError = new Error('Rate limited');
-        continue;
-      }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status} - ${text}`);
+    }
 
-      if (!res.ok) {
-        const text = await res.text();
-        lastError = new Error(`Jito Bundle 发送失败: ${res.status} - ${text}`);
-        continue;
-      }
+    const data = await res.json();
+    if (data.error) {
+      throw new Error(data.error.message || 'Jito error');
+    }
 
-      const data = await res.json();
+    return { endpoint, result: data.result };
+  };
 
-      if (data.error) {
-        lastError = new Error(data.error.message || 'Jito Bundle 失败');
-        continue;
-      }
+  // 并行发送到所有节点
+  const results = await Promise.allSettled(
+    JITO_ENDPOINTS.map(endpoint => sendToEndpoint(endpoint))
+  );
 
-      console.log('[SQT] Jito 响应:', data);
-      return data.result;
-    } catch (err) {
-      lastError = err;
-      console.log(`[SQT] 节点 ${endpoint} 错误:`, err.message);
+  // 找到第一个成功的
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      console.log(`[SQT] Jito 成功 (${result.value.endpoint}):`, result.value.result);
+      return result.value.result;
     }
   }
 
-  throw lastError || new Error('所有 Jito 节点都失败了');
+  // 所有都失败了，抛出最后一个错误
+  const errors = results.map(r => r.status === 'rejected' ? r.reason.message : '').filter(Boolean);
+  throw new Error(`所有 Jito 节点都失败: ${errors.join(', ')}`);
 }
 
 // 通过 RPC 发送交易 (备用方案)
@@ -478,17 +474,22 @@ async function executeTrade(tradeType, tokenCA, amount) {
     timing.prepareAmount = Date.now();
   }
 
+  const rpcEndpoint = settings.rpcEndpoint || 'https://api.mainnet-beta.solana.com';
+
   // Step 3: 获取报价
   const quoteStart = Date.now();
   const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps, apiKey);
   timing.getQuote = Date.now();
   console.log(`[SQT] ⏱️ 获取报价(Jupiter Quote): ${timing.getQuote - quoteStart}ms`);
 
-  // Step 4: 获取 Swap 交易
+  // Step 4: 并行获取 Swap 交易 和 blockhash
   const swapStart = Date.now();
-  const swapData = await getSwapTransaction(quote, publicKeyBase58, apiKey);
+  const [swapData, blockhashData] = await Promise.all([
+    getSwapTransaction(quote, publicKeyBase58, apiKey),
+    getRecentBlockhash(rpcEndpoint)
+  ]);
   timing.getSwap = Date.now();
-  console.log(`[SQT] ⏱️ 获取Swap交易(Jupiter Swap): ${timing.getSwap - swapStart}ms`);
+  console.log(`[SQT] ⏱️ 获取Swap+Blockhash(并行): ${timing.getSwap - swapStart}ms`);
 
   // Step 5: 签名交易
   const signStart = Date.now();
@@ -496,16 +497,14 @@ async function executeTrade(tradeType, tokenCA, amount) {
   timing.signTransaction = Date.now();
   console.log(`[SQT] ⏱️ 签名交易: ${timing.signTransaction - signStart}ms`);
 
-  // Step 6: 发送交易 (优先 Jito，失败则用 RPC)
+  // Step 6: 发送交易 (优先 Jito 并行，失败则用 RPC)
   const sendStart = Date.now();
   let signature;
   let usedJito = false;
 
-  const rpcEndpoint = settings.rpcEndpoint || 'https://api.mainnet-beta.solana.com';
-
   try {
-    // 尝试 Jito Bundle
-    const bundleId = await sendJitoBundle(signedTx, Math.floor(jitoTip * LAMPORTS_PER_SOL), keypair, rpcEndpoint);
+    // 尝试 Jito Bundle (并行发送到所有节点)
+    const bundleId = await sendJitoBundle(signedTx, Math.floor(jitoTip * LAMPORTS_PER_SOL), keypair, blockhashData.blockhash);
     console.log('[SQT] Jito Bundle ID:', bundleId);
     usedJito = true;
 
@@ -533,9 +532,9 @@ async function executeTrade(tradeType, tokenCA, amount) {
     console.log(`[SQT]    - 获取余额: ${timing.getBalance - timing.getKeypair}ms`);
   }
   console.log(`[SQT]    - 获取报价: ${timing.getQuote - (timing.prepareAmount || timing.getKeypair)}ms`);
-  console.log(`[SQT]    - 获取Swap: ${timing.getSwap - timing.getQuote}ms`);
+  console.log(`[SQT]    - 获取Swap+Blockhash: ${timing.getSwap - timing.getQuote}ms`);
   console.log(`[SQT]    - 签名交易: ${timing.signTransaction - timing.getSwap}ms`);
-  console.log(`[SQT]    - 发送交易: ${timing.sendTransaction - timing.signTransaction}ms`);
+  console.log(`[SQT]    - 发送交易(Jito并行): ${timing.sendTransaction - timing.signTransaction}ms`);
   console.log(`[SQT] ⏱️ 发送方式: ${usedJito ? 'Jito Bundle' : 'RPC'}`);
   console.log('[SQT] ⏱️ ========================');
 
