@@ -8,9 +8,24 @@ console.log('[SQT] Service Worker 加载中 (Jito Fast Mode)...');
 const JUPITER_QUOTE_API = 'https://api.jup.ag/swap/v1';
 const JUPITER_SWAP_API = 'https://api.jup.ag/swap/v1/swap';
 const JUPITER_BALANCE_API = 'https://api.jup.ag/ultra/v1/balances';
-const JITO_BLOCK_ENGINE = 'https://mainnet.block-engine.jito.wtf';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const LAMPORTS_PER_SOL = 1000000000;
+
+// Jito 多节点 (轮询避免单点限流)
+const JITO_ENDPOINTS = [
+  'https://mainnet.block-engine.jito.wtf',
+  'https://tokyo.mainnet.block-engine.jito.wtf',
+  'https://frankfurt.mainnet.block-engine.jito.wtf',
+  'https://ny.mainnet.block-engine.jito.wtf',
+  'https://amsterdam.mainnet.block-engine.jito.wtf'
+];
+let jitoEndpointIndex = 0;
+
+function getNextJitoEndpoint() {
+  const endpoint = JITO_ENDPOINTS[jitoEndpointIndex];
+  jitoEndpointIndex = (jitoEndpointIndex + 1) % JITO_ENDPOINTS.length;
+  return endpoint;
+}
 
 // Jito 小费账户 (随机选择一个)
 const JITO_TIP_ACCOUNTS = [
@@ -47,11 +62,31 @@ function getKeypair(privateKeyBase58) {
   };
 }
 
-// 获取设置
-async function getSettings() {
+// 设置缓存 (避免每次从 storage 读取)
+let settingsCache = null;
+let settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL = 30000; // 30秒
+
+// 获取设置 (带缓存)
+async function getSettings(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && settingsCache && (now - settingsCacheTime) < SETTINGS_CACHE_TTL) {
+    return settingsCache;
+  }
   const result = await chrome.storage.local.get('solanaQuickTrade');
-  return result.solanaQuickTrade || {};
+  settingsCache = result.solanaQuickTrade || {};
+  settingsCacheTime = now;
+  return settingsCache;
 }
+
+// 监听设置变化，自动刷新缓存
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.solanaQuickTrade) {
+    settingsCache = changes.solanaQuickTrade.newValue || {};
+    settingsCacheTime = Date.now();
+    console.log('[SQT] 设置已更新');
+  }
+});
 
 // 随机选择 Jito 小费账户
 function getRandomTipAccount() {
@@ -265,7 +300,7 @@ async function createTipTransaction(keypair, tipLamports, rpcEndpoint) {
   return tipTx;
 }
 
-// 通过 Jito 发送 Bundle
+// 通过 Jito 发送 Bundle (多节点轮询)
 async function sendJitoBundle(signedTransaction, tipLamports, keypair, rpcEndpoint) {
   console.log('[SQT] 通过 Jito 发送 Bundle...');
 
@@ -284,25 +319,47 @@ async function sendJitoBundle(signedTransaction, tipLamports, keypair, rpcEndpoi
     params: [[swapTxBase58, tipTxBase58]]
   };
 
-  const res = await fetch(`${JITO_BLOCK_ENGINE}/api/v1/bundles`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(bundleRequest)
-  });
+  // 尝试多个 Jito 节点
+  let lastError = null;
+  for (let i = 0; i < JITO_ENDPOINTS.length; i++) {
+    const endpoint = getNextJitoEndpoint();
+    console.log(`[SQT] 尝试 Jito 节点: ${endpoint}`);
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Jito Bundle 发送失败: ${res.status} - ${text}`);
+    try {
+      const res = await fetch(`${endpoint}/api/v1/bundles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundleRequest)
+      });
+
+      if (res.status === 429) {
+        console.log(`[SQT] 节点 ${endpoint} 限流，尝试下一个...`);
+        lastError = new Error('Rate limited');
+        continue;
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        lastError = new Error(`Jito Bundle 发送失败: ${res.status} - ${text}`);
+        continue;
+      }
+
+      const data = await res.json();
+
+      if (data.error) {
+        lastError = new Error(data.error.message || 'Jito Bundle 失败');
+        continue;
+      }
+
+      console.log('[SQT] Jito 响应:', data);
+      return data.result;
+    } catch (err) {
+      lastError = err;
+      console.log(`[SQT] 节点 ${endpoint} 错误:`, err.message);
+    }
   }
 
-  const data = await res.json();
-  console.log('[SQT] Jito 响应:', data);
-
-  if (data.error) {
-    throw new Error(data.error.message || 'Jito Bundle 失败');
-  }
-
-  return data.result;
+  throw lastError || new Error('所有 Jito 节点都失败了');
 }
 
 // 通过 RPC 发送交易 (备用方案)
@@ -464,13 +521,7 @@ async function executeTrade(tradeType, tokenCA, amount) {
   console.log(`[SQT] ⏱️ 发送交易(${usedJito ? 'Jito' : 'RPC'}): ${timing.sendTransaction - sendStart}ms`);
   console.log('[SQT] 交易签名:', signature);
 
-  // Step 7: 确认交易 (可选，不阻塞)
-  const confirmStart = Date.now();
-  const confirmed = await confirmTransaction(signature, rpcEndpoint);
-  timing.confirmTransaction = Date.now();
-  console.log(`[SQT] ⏱️ 确认交易: ${timing.confirmTransaction - confirmStart}ms`);
-
-  // 总耗时统计
+  // 总耗时统计 (发送完成即算完成，确认异步进行)
   timing.end = Date.now();
   const totalTime = timing.end - timing.start;
   console.log('[SQT] ⏱️ ========================');
@@ -485,9 +536,15 @@ async function executeTrade(tradeType, tokenCA, amount) {
   console.log(`[SQT]    - 获取Swap: ${timing.getSwap - timing.getQuote}ms`);
   console.log(`[SQT]    - 签名交易: ${timing.signTransaction - timing.getSwap}ms`);
   console.log(`[SQT]    - 发送交易: ${timing.sendTransaction - timing.signTransaction}ms`);
-  console.log(`[SQT]    - 确认交易: ${timing.confirmTransaction - timing.sendTransaction}ms`);
   console.log(`[SQT] ⏱️ 发送方式: ${usedJito ? 'Jito Bundle' : 'RPC'}`);
   console.log('[SQT] ⏱️ ========================');
+
+  // 异步确认交易 (不阻塞返回)
+  confirmTransaction(signature, rpcEndpoint).then(confirmed => {
+    console.log(`[SQT] 交易确认结果: ${confirmed ? '成功' : '超时'}`);
+  }).catch(err => {
+    console.log('[SQT] 交易确认错误:', err.message);
+  });
 
   return signature;
 }

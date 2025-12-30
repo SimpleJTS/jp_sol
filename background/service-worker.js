@@ -17167,9 +17167,21 @@ Message: ${transactionMessage}.
   var JUPITER_QUOTE_API = "https://api.jup.ag/swap/v1";
   var JUPITER_SWAP_API = "https://api.jup.ag/swap/v1/swap";
   var JUPITER_BALANCE_API = "https://api.jup.ag/ultra/v1/balances";
-  var JITO_BLOCK_ENGINE = "https://mainnet.block-engine.jito.wtf";
   var SOL_MINT = "So11111111111111111111111111111111111111112";
   var LAMPORTS_PER_SOL = 1e9;
+  var JITO_ENDPOINTS = [
+    "https://mainnet.block-engine.jito.wtf",
+    "https://tokyo.mainnet.block-engine.jito.wtf",
+    "https://frankfurt.mainnet.block-engine.jito.wtf",
+    "https://ny.mainnet.block-engine.jito.wtf",
+    "https://amsterdam.mainnet.block-engine.jito.wtf"
+  ];
+  var jitoEndpointIndex = 0;
+  function getNextJitoEndpoint() {
+    const endpoint = JITO_ENDPOINTS[jitoEndpointIndex];
+    jitoEndpointIndex = (jitoEndpointIndex + 1) % JITO_ENDPOINTS.length;
+    return endpoint;
+  }
   var JITO_TIP_ACCOUNTS = [
     "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5",
     "HFqU5x63VTqvQss8hp11i4bVmkdzGTT4J4Kj1gfCmJY8",
@@ -17199,10 +17211,26 @@ Message: ${transactionMessage}.
       publicKeyBase58: keypair.publicKey.toBase58()
     };
   }
-  async function getSettings() {
+  var settingsCache = null;
+  var settingsCacheTime = 0;
+  var SETTINGS_CACHE_TTL = 3e4;
+  async function getSettings(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && settingsCache && now - settingsCacheTime < SETTINGS_CACHE_TTL) {
+      return settingsCache;
+    }
     const result = await chrome.storage.local.get("solanaQuickTrade");
-    return result.solanaQuickTrade || {};
+    settingsCache = result.solanaQuickTrade || {};
+    settingsCacheTime = now;
+    return settingsCache;
   }
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.solanaQuickTrade) {
+      settingsCache = changes.solanaQuickTrade.newValue || {};
+      settingsCacheTime = Date.now();
+      console.log("[SQT] \u8BBE\u7F6E\u5DF2\u66F4\u65B0");
+    }
+  });
   function getRandomTipAccount() {
     const index = Math.floor(Math.random() * JITO_TIP_ACCOUNTS.length);
     return JITO_TIP_ACCOUNTS[index];
@@ -17379,21 +17407,39 @@ Message: ${transactionMessage}.
       method: "sendBundle",
       params: [[swapTxBase58, tipTxBase58]]
     };
-    const res = await fetch(`${JITO_BLOCK_ENGINE}/api/v1/bundles`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(bundleRequest)
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Jito Bundle \u53D1\u9001\u5931\u8D25: ${res.status} - ${text}`);
+    let lastError = null;
+    for (let i = 0; i < JITO_ENDPOINTS.length; i++) {
+      const endpoint = getNextJitoEndpoint();
+      console.log(`[SQT] \u5C1D\u8BD5 Jito \u8282\u70B9: ${endpoint}`);
+      try {
+        const res = await fetch(`${endpoint}/api/v1/bundles`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bundleRequest)
+        });
+        if (res.status === 429) {
+          console.log(`[SQT] \u8282\u70B9 ${endpoint} \u9650\u6D41\uFF0C\u5C1D\u8BD5\u4E0B\u4E00\u4E2A...`);
+          lastError = new Error("Rate limited");
+          continue;
+        }
+        if (!res.ok) {
+          const text = await res.text();
+          lastError = new Error(`Jito Bundle \u53D1\u9001\u5931\u8D25: ${res.status} - ${text}`);
+          continue;
+        }
+        const data = await res.json();
+        if (data.error) {
+          lastError = new Error(data.error.message || "Jito Bundle \u5931\u8D25");
+          continue;
+        }
+        console.log("[SQT] Jito \u54CD\u5E94:", data);
+        return data.result;
+      } catch (err) {
+        lastError = err;
+        console.log(`[SQT] \u8282\u70B9 ${endpoint} \u9519\u8BEF:`, err.message);
+      }
     }
-    const data = await res.json();
-    console.log("[SQT] Jito \u54CD\u5E94:", data);
-    if (data.error) {
-      throw new Error(data.error.message || "Jito Bundle \u5931\u8D25");
-    }
-    return data.result;
+    throw lastError || new Error("\u6240\u6709 Jito \u8282\u70B9\u90FD\u5931\u8D25\u4E86");
   }
   async function sendViaRpc(signedTransaction, rpcEndpoint = "https://api.mainnet-beta.solana.com") {
     console.log("[SQT] \u901A\u8FC7 RPC \u53D1\u9001\u4EA4\u6613...");
@@ -17513,10 +17559,6 @@ Message: ${transactionMessage}.
     timing.sendTransaction = Date.now();
     console.log(`[SQT] \u23F1\uFE0F \u53D1\u9001\u4EA4\u6613(${usedJito ? "Jito" : "RPC"}): ${timing.sendTransaction - sendStart}ms`);
     console.log("[SQT] \u4EA4\u6613\u7B7E\u540D:", signature2);
-    const confirmStart = Date.now();
-    const confirmed = await confirmTransaction(signature2, rpcEndpoint);
-    timing.confirmTransaction = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u786E\u8BA4\u4EA4\u6613: ${timing.confirmTransaction - confirmStart}ms`);
     timing.end = Date.now();
     const totalTime = timing.end - timing.start;
     console.log("[SQT] \u23F1\uFE0F ========================");
@@ -17531,9 +17573,13 @@ Message: ${transactionMessage}.
     console.log(`[SQT]    - \u83B7\u53D6Swap: ${timing.getSwap - timing.getQuote}ms`);
     console.log(`[SQT]    - \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - timing.getSwap}ms`);
     console.log(`[SQT]    - \u53D1\u9001\u4EA4\u6613: ${timing.sendTransaction - timing.signTransaction}ms`);
-    console.log(`[SQT]    - \u786E\u8BA4\u4EA4\u6613: ${timing.confirmTransaction - timing.sendTransaction}ms`);
     console.log(`[SQT] \u23F1\uFE0F \u53D1\u9001\u65B9\u5F0F: ${usedJito ? "Jito Bundle" : "RPC"}`);
     console.log("[SQT] \u23F1\uFE0F ========================");
+    confirmTransaction(signature2, rpcEndpoint).then((confirmed) => {
+      console.log(`[SQT] \u4EA4\u6613\u786E\u8BA4\u7ED3\u679C: ${confirmed ? "\u6210\u529F" : "\u8D85\u65F6"}`);
+    }).catch((err) => {
+      console.log("[SQT] \u4EA4\u6613\u786E\u8BA4\u9519\u8BEF:", err.message);
+    });
     return signature2;
   }
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
