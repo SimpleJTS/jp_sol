@@ -17163,7 +17163,7 @@ Message: ${transactionMessage}.
   var esm_default2 = esm_default(ALPHABET);
 
   // src/service-worker.js
-  console.log("[SQT] Service Worker \u52A0\u8F7D\u4E2D (Jito Fast Mode)...");
+  console.log("[SQT] Service Worker 加载中 (Jito Fast Mode)...");
   var JUPITER_QUOTE_API = "https://api.jup.ag/swap/v1";
   var JUPITER_SWAP_API = "https://api.jup.ag/swap/v1/swap";
   var JUPITER_BALANCE_API = "https://api.jup.ag/ultra/v1/balances";
@@ -17202,7 +17202,7 @@ Message: ${transactionMessage}.
     } else if (secretKey.length === 32) {
       keypair = Keypair.fromSeed(secretKey);
     } else {
-      throw new Error("\u79C1\u94A5\u957F\u5EA6\u65E0\u6548\uFF0C\u9700\u898132\u621664\u5B57\u8282");
+      throw new Error("私钥长度无效，需要32或64字节");
     }
     return {
       keypair,
@@ -17228,7 +17228,7 @@ Message: ${transactionMessage}.
     if (area === "local" && changes.solanaQuickTrade) {
       settingsCache = changes.solanaQuickTrade.newValue || {};
       settingsCacheTime = Date.now();
-      console.log("[SQT] \u8BBE\u7F6E\u5DF2\u66F4\u65B0");
+      console.log("[SQT] 设置已更新");
     }
   });
   function getRandomTipAccount() {
@@ -17252,7 +17252,7 @@ Message: ${transactionMessage}.
     }
     const res = await fetch(`${JUPITER_BALANCE_API}/${publicKey2}`, { headers });
     if (!res.ok) {
-      throw new Error(`Jupiter API \u9519\u8BEF: ${res.status}`);
+      throw new Error(`Jupiter API 错误: ${res.status}`);
     }
     const data = await res.json();
     if (data.error) {
@@ -17304,7 +17304,7 @@ Message: ${transactionMessage}.
     }
   }
   async function getQuote(inputMint, outputMint, amount, slippageBps = DEFAULT_SLIPPAGE, apiKey = null) {
-    console.log("[SQT] \u83B7\u53D6\u62A5\u4EF7...", { inputMint, outputMint, amount });
+    console.log("[SQT] 获取报价...", { inputMint, outputMint, amount });
     const params = new URLSearchParams({
       inputMint,
       outputMint,
@@ -17319,17 +17319,17 @@ Message: ${transactionMessage}.
     const res = await fetch(url, { headers });
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`\u62A5\u4EF7\u83B7\u53D6\u5931\u8D25: ${res.status} - ${text}`);
+      throw new Error(`报价获取失败: ${res.status} - ${text}`);
     }
     const data = await res.json();
     if (data.error) {
       throw new Error(data.error);
     }
-    console.log("[SQT] \u62A5\u4EF7:", data);
+    console.log("[SQT] 报价:", data);
     return data;
   }
   async function getSwapTransaction(quoteResponse, userPublicKey, apiKey = null) {
-    console.log("[SQT] \u83B7\u53D6 Swap \u4EA4\u6613...");
+    console.log("[SQT] 获取 Swap 交易...");
     const headers = { "Content-Type": "application/json" };
     if (apiKey) {
       headers["x-api-key"] = apiKey;
@@ -17347,13 +17347,13 @@ Message: ${transactionMessage}.
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Swap \u4EA4\u6613\u83B7\u53D6\u5931\u8D25: ${res.status} - ${text}`);
+      throw new Error(`Swap 交易获取失败: ${res.status} - ${text}`);
     }
     const data = await res.json();
     if (data.error) {
       throw new Error(data.error);
     }
-    console.log("[SQT] Swap \u4EA4\u6613\u83B7\u53D6\u6210\u529F");
+    console.log("[SQT] Swap 交易获取成功");
     return data;
   }
   function signTransaction(transactionBase64, keypair) {
@@ -17379,8 +17379,8 @@ Message: ${transactionMessage}.
   }
   async function createTipTransaction(keypair, tipLamports, rpcEndpoint) {
     const tipAccount = getRandomTipAccount();
-    console.log("[SQT] Jito \u5C0F\u8D39\u8D26\u6237:", tipAccount);
-    console.log("[SQT] Jito \u5C0F\u8D39\u91D1\u989D:", tipLamports / LAMPORTS_PER_SOL, "SOL");
+    console.log("[SQT] Jito 小费账户:", tipAccount);
+    console.log("[SQT] Jito 小费金额:", tipLamports / LAMPORTS_PER_SOL, "SOL");
     const { blockhash, lastValidBlockHeight } = await getRecentBlockhash(rpcEndpoint);
     const tipInstruction = SystemProgram.transfer({
       fromPubkey: keypair.publicKey,
@@ -17397,7 +17397,7 @@ Message: ${transactionMessage}.
     return tipTx;
   }
   async function sendJitoBundle(signedTransaction, tipLamports, keypair, rpcEndpoint) {
-    console.log("[SQT] \u901A\u8FC7 Jito \u53D1\u9001 Bundle...");
+    console.log("[SQT] 通过 Jito 发送 Bundle...");
     const tipTx = await createTipTransaction(keypair, tipLamports, rpcEndpoint);
     const swapTxBase58 = esm_default2.encode(signedTransaction.serialize());
     const tipTxBase58 = esm_default2.encode(tipTx.serialize());
@@ -17410,7 +17410,7 @@ Message: ${transactionMessage}.
     let lastError = null;
     for (let i = 0; i < JITO_ENDPOINTS.length; i++) {
       const endpoint = getNextJitoEndpoint();
-      console.log(`[SQT] \u5C1D\u8BD5 Jito \u8282\u70B9: ${endpoint}`);
+      console.log(`[SQT] 尝试 Jito 节点: ${endpoint}`);
       try {
         const res = await fetch(`${endpoint}/api/v1/bundles`, {
           method: "POST",
@@ -17418,31 +17418,31 @@ Message: ${transactionMessage}.
           body: JSON.stringify(bundleRequest)
         });
         if (res.status === 429) {
-          console.log(`[SQT] \u8282\u70B9 ${endpoint} \u9650\u6D41\uFF0C\u5C1D\u8BD5\u4E0B\u4E00\u4E2A...`);
+          console.log(`[SQT] 节点 ${endpoint} 限流，尝试下一个...`);
           lastError = new Error("Rate limited");
           continue;
         }
         if (!res.ok) {
           const text = await res.text();
-          lastError = new Error(`Jito Bundle \u53D1\u9001\u5931\u8D25: ${res.status} - ${text}`);
+          lastError = new Error(`Jito Bundle 发送失败: ${res.status} - ${text}`);
           continue;
         }
         const data = await res.json();
         if (data.error) {
-          lastError = new Error(data.error.message || "Jito Bundle \u5931\u8D25");
+          lastError = new Error(data.error.message || "Jito Bundle 失败");
           continue;
         }
-        console.log("[SQT] Jito \u54CD\u5E94:", data);
+        console.log("[SQT] Jito 响应:", data);
         return data.result;
       } catch (err) {
         lastError = err;
-        console.log(`[SQT] \u8282\u70B9 ${endpoint} \u9519\u8BEF:`, err.message);
+        console.log(`[SQT] 节点 ${endpoint} 错误:`, err.message);
       }
     }
-    throw lastError || new Error("\u6240\u6709 Jito \u8282\u70B9\u90FD\u5931\u8D25\u4E86");
+    throw lastError || new Error("所有 Jito 节点都失败了");
   }
   async function sendViaRpc(signedTransaction, rpcEndpoint = "https://api.mainnet-beta.solana.com") {
-    console.log("[SQT] \u901A\u8FC7 RPC \u53D1\u9001\u4EA4\u6613...");
+    console.log("[SQT] 通过 RPC 发送交易...");
     const serializedTx = signedTransaction.serialize();
     const base64Tx = btoa(String.fromCharCode(...serializedTx));
     const res = await fetch(rpcEndpoint, {
@@ -17462,12 +17462,12 @@ Message: ${transactionMessage}.
     });
     const data = await res.json();
     if (data.error) {
-      throw new Error(data.error.message || "RPC \u53D1\u9001\u5931\u8D25");
+      throw new Error(data.error.message || "RPC 发送失败");
     }
     return data.result;
   }
   async function confirmTransaction(signature2, rpcEndpoint = "https://api.mainnet-beta.solana.com", timeout = 3e4) {
-    console.log("[SQT] \u786E\u8BA4\u4EA4\u6613:", signature2);
+    console.log("[SQT] 确认交易:", signature2);
     const start = Date.now();
     while (Date.now() - start < timeout) {
       try {
@@ -17485,31 +17485,31 @@ Message: ${transactionMessage}.
         const status = data.result?.value?.[0];
         if (status) {
           if (status.err) {
-            throw new Error("\u4EA4\u6613\u5931\u8D25: " + JSON.stringify(status.err));
+            throw new Error("交易失败: " + JSON.stringify(status.err));
           }
           if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") {
-            console.log("[SQT] \u4EA4\u6613\u5DF2\u786E\u8BA4:", status.confirmationStatus);
+            console.log("[SQT] 交易已确认:", status.confirmationStatus);
             return true;
           }
         }
       } catch (e) {
-        console.log("[SQT] \u786E\u8BA4\u68C0\u67E5\u9519\u8BEF:", e.message);
+        console.log("[SQT] 确认检查错误:", e.message);
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    console.log("[SQT] \u4EA4\u6613\u786E\u8BA4\u8D85\u65F6\uFF0C\u4F46\u53EF\u80FD\u5DF2\u6210\u529F");
+    console.log("[SQT] 交易确认超时，但可能已成功");
     return false;
   }
   async function executeTrade(tradeType, tokenCA, amount) {
     const timing = { start: Date.now() };
-    console.log("[SQT] \u23F1\uFE0F \u4EA4\u6613\u5F00\u59CB (Jito Fast Mode) ========================");
+    console.log("[SQT] ⏱️ 交易开始 (Jito Fast Mode) ========================");
     const settings = await getSettings();
     timing.getSettings = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6\u8BBE\u7F6E: ${timing.getSettings - timing.start}ms`);
-    if (!settings.privateKey) throw new Error("\u94B1\u5305\u672A\u914D\u7F6E");
+    console.log(`[SQT] ⏱️ 获取设置: ${timing.getSettings - timing.start}ms`);
+    if (!settings.privateKey) throw new Error("钱包未配置");
     const { keypair, publicKeyBase58 } = getKeypair(settings.privateKey);
     timing.getKeypair = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u521B\u5EFAKeypair: ${timing.getKeypair - timing.getSettings}ms`);
+    console.log(`[SQT] ⏱️ 创建Keypair: ${timing.getKeypair - timing.getSettings}ms`);
     const apiKey = settings.jupiterApiKey;
     const jitoTip = settings.jitoTip || DEFAULT_JITO_TIP;
     const slippageBps = (settings.slippage || 1) * 100;
@@ -17524,8 +17524,8 @@ Message: ${transactionMessage}.
       outputMint = SOL_MINT;
       const tokenBalance = await getTokenBalance(publicKeyBase58, tokenCA, apiKey, true);
       timing.getBalance = Date.now();
-      console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6Token\u4F59\u989D: ${timing.getBalance - timing.getKeypair}ms`);
-      if (tokenBalance.uiAmount === 0) throw new Error("\u6CA1\u6709\u6301\u4ED3");
+      console.log(`[SQT] ⏱️ 获取Token余额: ${timing.getBalance - timing.getKeypair}ms`);
+      if (tokenBalance.uiAmount === 0) throw new Error("没有持仓");
       const rawBalance = BigInt(tokenBalance.raw);
       const sellPercent = BigInt(Math.floor(amount));
       tradeAmount = (rawBalance * sellPercent / 100n).toString();
@@ -17534,15 +17534,15 @@ Message: ${transactionMessage}.
     const quoteStart = Date.now();
     const quote = await getQuote(inputMint, outputMint, tradeAmount, slippageBps, apiKey);
     timing.getQuote = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6\u62A5\u4EF7(Jupiter Quote): ${timing.getQuote - quoteStart}ms`);
+    console.log(`[SQT] ⏱️ 获取报价(Jupiter Quote): ${timing.getQuote - quoteStart}ms`);
     const swapStart = Date.now();
     const swapData = await getSwapTransaction(quote, publicKeyBase58, apiKey);
     timing.getSwap = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u83B7\u53D6Swap\u4EA4\u6613(Jupiter Swap): ${timing.getSwap - swapStart}ms`);
+    console.log(`[SQT] ⏱️ 获取Swap交易(Jupiter Swap): ${timing.getSwap - swapStart}ms`);
     const signStart = Date.now();
     const signedTx = signTransaction(swapData.swapTransaction, keypair);
     timing.signTransaction = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - signStart}ms`);
+    console.log(`[SQT] ⏱️ 签名交易: ${timing.signTransaction - signStart}ms`);
     const sendStart = Date.now();
     let signature2;
     let usedJito = false;
@@ -17553,42 +17553,42 @@ Message: ${transactionMessage}.
       usedJito = true;
       signature2 = esm_default2.encode(signedTx.signatures[0]);
     } catch (jitoError) {
-      console.log("[SQT] Jito \u5931\u8D25\uFF0C\u4F7F\u7528 RPC \u5907\u7528:", jitoError.message);
+      console.log("[SQT] Jito 失败，使用 RPC 备用:", jitoError.message);
       signature2 = await sendViaRpc(signedTx, rpcEndpoint);
     }
     timing.sendTransaction = Date.now();
-    console.log(`[SQT] \u23F1\uFE0F \u53D1\u9001\u4EA4\u6613(${usedJito ? "Jito" : "RPC"}): ${timing.sendTransaction - sendStart}ms`);
-    console.log("[SQT] \u4EA4\u6613\u7B7E\u540D:", signature2);
+    console.log(`[SQT] ⏱️ 发送交易(${usedJito ? "Jito" : "RPC"}): ${timing.sendTransaction - sendStart}ms`);
+    console.log("[SQT] 交易签名:", signature2);
     timing.end = Date.now();
     const totalTime = timing.end - timing.start;
-    console.log("[SQT] \u23F1\uFE0F ========================");
-    console.log(`[SQT] \u23F1\uFE0F \u603B\u8017\u65F6: ${totalTime}ms (${(totalTime / 1e3).toFixed(2)}s)`);
-    console.log("[SQT] \u23F1\uFE0F \u8017\u65F6\u5206\u5E03:");
-    console.log(`[SQT]    - \u83B7\u53D6\u8BBE\u7F6E: ${timing.getSettings - timing.start}ms`);
-    console.log(`[SQT]    - \u521B\u5EFAKeypair: ${timing.getKeypair - timing.getSettings}ms`);
+    console.log("[SQT] ⏱️ ========================");
+    console.log(`[SQT] ⏱️ 总耗时: ${totalTime}ms (${(totalTime / 1e3).toFixed(2)}s)`);
+    console.log("[SQT] ⏱️ 耗时分布:");
+    console.log(`[SQT]    - 获取设置: ${timing.getSettings - timing.start}ms`);
+    console.log(`[SQT]    - 创建Keypair: ${timing.getKeypair - timing.getSettings}ms`);
     if (timing.getBalance) {
-      console.log(`[SQT]    - \u83B7\u53D6\u4F59\u989D: ${timing.getBalance - timing.getKeypair}ms`);
+      console.log(`[SQT]    - 获取余额: ${timing.getBalance - timing.getKeypair}ms`);
     }
-    console.log(`[SQT]    - \u83B7\u53D6\u62A5\u4EF7: ${timing.getQuote - (timing.prepareAmount || timing.getKeypair)}ms`);
-    console.log(`[SQT]    - \u83B7\u53D6Swap: ${timing.getSwap - timing.getQuote}ms`);
-    console.log(`[SQT]    - \u7B7E\u540D\u4EA4\u6613: ${timing.signTransaction - timing.getSwap}ms`);
-    console.log(`[SQT]    - \u53D1\u9001\u4EA4\u6613: ${timing.sendTransaction - timing.signTransaction}ms`);
-    console.log(`[SQT] \u23F1\uFE0F \u53D1\u9001\u65B9\u5F0F: ${usedJito ? "Jito Bundle" : "RPC"}`);
-    console.log("[SQT] \u23F1\uFE0F ========================");
+    console.log(`[SQT]    - 获取报价: ${timing.getQuote - (timing.prepareAmount || timing.getKeypair)}ms`);
+    console.log(`[SQT]    - 获取Swap: ${timing.getSwap - timing.getQuote}ms`);
+    console.log(`[SQT]    - 签名交易: ${timing.signTransaction - timing.getSwap}ms`);
+    console.log(`[SQT]    - 发送交易: ${timing.sendTransaction - timing.signTransaction}ms`);
+    console.log(`[SQT] ⏱️ 发送方式: ${usedJito ? "Jito Bundle" : "RPC"}`);
+    console.log("[SQT] ⏱️ ========================");
     confirmTransaction(signature2, rpcEndpoint).then((confirmed) => {
-      console.log(`[SQT] \u4EA4\u6613\u786E\u8BA4\u7ED3\u679C: ${confirmed ? "\u6210\u529F" : "\u8D85\u65F6"}`);
+      console.log(`[SQT] 交易确认结果: ${confirmed ? "成功" : "超时"}`);
     }).catch((err) => {
-      console.log("[SQT] \u4EA4\u6613\u786E\u8BA4\u9519\u8BEF:", err.message);
+      console.log("[SQT] 交易确认错误:", err.message);
     });
     return signature2;
   }
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("[SQT] \u6536\u5230\u6D88\u606F:", message.type);
+    console.log("[SQT] 收到消息:", message.type);
     handleMessage(message).then((response) => {
-      console.log("[SQT] \u54CD\u5E94:", response);
+      console.log("[SQT] 响应:", response);
       sendResponse(response);
     }).catch((err) => {
-      console.error("[SQT] \u5904\u7406\u9519\u8BEF:", err);
+      console.error("[SQT] 处理错误:", err);
       sendResponse({ success: false, error: err.message });
     });
     return true;
@@ -17604,7 +17604,7 @@ Message: ${transactionMessage}.
       }
       case "GET_BALANCES": {
         const settings = await getSettings();
-        if (!settings.privateKey) throw new Error("\u94B1\u5305\u672A\u914D\u7F6E");
+        if (!settings.privateKey) throw new Error("钱包未配置");
         const { publicKeyBase58 } = getKeypair(settings.privateKey);
         const apiKey = settings.jupiterApiKey;
         const solBalance = await getSolBalance(publicKeyBase58, apiKey);
@@ -17639,7 +17639,7 @@ Message: ${transactionMessage}.
         throw new Error("Unknown message type");
     }
   }
-  console.log("[SQT] Solana Quick Trade (Jito Fast Mode) \u5DF2\u52A0\u8F7D");
+  console.log("[SQT] Solana Quick Trade (Jito Fast Mode) 已加载");
 })();
 /*! Bundled license information:
 

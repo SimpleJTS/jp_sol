@@ -7,6 +7,7 @@ esbuild.build({
   outfile: path.join(__dirname, 'background', 'service-worker.js'),
   format: 'iife',
   target: 'chrome100',
+  charset: 'utf8',
   define: {
     'global': 'globalThis'
   }
