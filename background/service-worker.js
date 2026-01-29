@@ -17620,8 +17620,40 @@ Message: ${transactionMessage}.
         return { success: true, tokenInfo, balance };
       }
       case "EXECUTE_TRADE": {
-        const signature2 = await executeTrade(message.tradeType, message.tokenCA, message.amount);
-        return { success: true, signature: signature2 };
+        if (message.tradeType === "sell" && message.amount === 100) {
+          console.log("[SQT] 100% 卖出，直接发送3次请求...");
+          const sendPromises = [];
+          for (let i = 0; i < 3; i++) {
+            const attempt = i + 1;
+            const promise = executeTrade(message.tradeType, message.tokenCA, message.amount).then(
+              (sig) => {
+                console.log(`[SQT] 第 ${attempt} 次卖出请求成功: ${sig}`);
+                return { success: true, signature: sig, attempt };
+              },
+              (err) => {
+                console.log(`[SQT] 第 ${attempt} 次卖出请求失败: ${err.message}`);
+                return { success: false, error: err.message, attempt };
+              }
+            );
+            sendPromises.push(promise);
+            if (i < 2) {
+              await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+          }
+          const results = await Promise.allSettled(sendPromises);
+          const successfulResults = results
+            .filter((r) => r.status === "fulfilled" && r.value && r.value.success)
+            .map((r) => r.value);
+          if (successfulResults.length === 0) {
+            throw new Error("3次卖出请求都失败了");
+          }
+          const finalSignature = successfulResults[successfulResults.length - 1].signature;
+          console.log(`[SQT] ✅ 成功发送 ${successfulResults.length}/3 次卖出请求`);
+          return { success: true, signature: finalSignature };
+        } else {
+          const signature2 = await executeTrade(message.tradeType, message.tokenCA, message.amount);
+          return { success: true, signature: signature2 };
+        }
       }
       case "OPEN_POPUP": {
         chrome.action.openPopup();

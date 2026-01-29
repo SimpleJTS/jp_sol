@@ -371,7 +371,8 @@
     }
 
     const actionText = type === 'buy' ? `买入 ${value} SOL` : `卖出 ${value}%`;
-    showStatus(`正在${actionText}...`, 'info');
+    const isFullSell = type === 'sell' && value === 100;
+    showStatus(`正在${actionText}${isFullSell ? ' (直接发送3次)' : ''}...`, 'info');
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -383,7 +384,11 @@
 
       if (response.success) {
         const txLink = `https://solscan.io/tx/${response.signature}`;
-        showStatus(`交易成功! <a href="${txLink}" target="_blank">查看</a>`, 'success');
+        if (isFullSell) {
+          showStatus(`100% 卖出完成! <a href="${txLink}" target="_blank">查看交易</a>`, 'success');
+        } else {
+          showStatus(`交易成功! <a href="${txLink}" target="_blank">查看</a>`, 'success');
+        }
         // 刷新余额
         setTimeout(refreshBalances, 2000);
       } else {
