@@ -24,7 +24,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://axiom.trade/*", "https://*.axiom.trade/*"],
+      "matches": [
+        "https://axiom.trade/*",
+        "https://*.axiom.trade/*",
+        "https://gmgn.ai/*",
+        "https://*.gmgn.ai/*"
+      ],
       "js": ["content/floating-panel.js"],
       "css": ["content/floating-panel.css"],
       "run_at": "document_end"

@@ -499,6 +499,51 @@
     }
   }
 
+  // GMGN 页面 CA 自动检测
+  function detectGmgnCA() {
+    // 只在 GMGN 网站运行
+    if (!window.location.hostname.includes('gmgn.ai')) return null;
+
+    // 方法1: 从 solscan token 链接提取 (gmgn.ai 使用 /token/ 路径)
+    const solscanTokenLinks = document.querySelectorAll('a[href*="solscan.io/token/"]');
+    for (const link of solscanTokenLinks) {
+      const match = link.href.match(/solscan\.io\/token\/([A-Za-z0-9]{32,44})/);
+      if (match && match[1]) {
+        // 排除 SOL 的 mint 地址
+        if (match[1] !== 'So11111111111111111111111111111111111111112') {
+          console.log('[SQT] 从 solscan token 链接检测到 CA:', match[1]);
+          return match[1];
+        }
+      }
+    }
+
+    // 方法2: 从 solscan account 链接提取 (备用方法)
+    const solscanAccountLinks = document.querySelectorAll('a[href*="solscan.io/account/"]');
+    for (const link of solscanAccountLinks) {
+      const match = link.href.match(/solscan\.io\/account\/([A-Za-z0-9]{32,44})/);
+      if (match && match[1]) {
+        // 排除 SOL 的 mint 地址
+        if (match[1] !== 'So11111111111111111111111111111111111111112') {
+          console.log('[SQT] 从 solscan account 链接检测到 CA:', match[1]);
+          return match[1];
+        }
+      }
+    }
+
+    // 方法3: 从 URL 提取 (如果 URL 中有代币地址)
+    const urlMatch = window.location.href.match(/\/([A-Za-z0-9]{32,44})(?:\/|$|\?|#)/);
+    if (urlMatch && urlMatch[1] && urlMatch[1].length >= 32) {
+      // 排除常见路径
+      const excludePaths = ['token', 'account', 'tx', 'address', 'sol'];
+      if (!excludePaths.includes(urlMatch[1].toLowerCase())) {
+        console.log('[SQT] 从 URL 检测到 CA:', urlMatch[1]);
+        return urlMatch[1];
+      }
+    }
+
+    return null;
+  }
+
   // AXIOM 页面 CA 自动检测
   function detectAxiomCA() {
     // 只在 AXIOM 网站运行
@@ -529,7 +574,15 @@
 
   // 自动填入 CA
   function autoFillCA() {
-    const ca = detectAxiomCA();
+    let ca = null;
+    
+    // 根据当前网站调用对应的检测函数
+    if (window.location.hostname.includes('gmgn.ai')) {
+      ca = detectGmgnCA();
+    } else if (window.location.hostname.includes('axiom.trade')) {
+      ca = detectAxiomCA();
+    }
+    
     if (ca && ca !== panelState.currentCA) {
       console.log('[SQT] 自动填入 CA:', ca);
       const caInput = document.getElementById('sqt-ca');
